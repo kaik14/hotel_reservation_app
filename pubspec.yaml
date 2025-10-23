@@ -31,6 +31,10 @@ dependencies:
   flutter:
     sdk: flutter
 
+  firebase_core: ^3.1.1      # Firebase 核心包
+  firebase_auth: ^5.1.1      # Firebase 认证包 (用于登录)
+  cloud_firestore: ^5.0.2  # Firebase 数据库包 (用于存储预订信息)
+
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8

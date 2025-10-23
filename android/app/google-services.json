@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "486359900752",
+    "project_id": "hotel-reservation-app-e9d43",
+    "storage_bucket": "hotel-reservation-app-e9d43.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:486359900752:android:10c6ef39b79671771e2755",
+        "android_client_info": {
+          "package_name": "com.example.hotel_reservation_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDiN5R5ieG9QxrbkL8FujW8u3EGRgpLAYA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
