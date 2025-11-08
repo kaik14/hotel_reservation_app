@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:hotel_reservation_app/pages/preference_page.dart';
 // 1. 确认导入 'services' 文件夹中的 'auth_service.dart'
 import 'package:hotel_reservation_app/services/auth_service.dart';
 // 2. 确认导入 'pages' 文件夹中的 'register_page.dart'
@@ -35,6 +36,21 @@ class _LoginPageState extends State<LoginPage> {
         _passwordController.text,
       );
       // 登录成功后，AuthGate 会自动处理页面跳转
+      // ✅ 登录成功后检查是否首次登录
+  final user = FirebaseAuth.instance.currentUser;
+  final creationTime = user?.metadata.creationTime;
+  final lastSignInTime = user?.metadata.lastSignInTime;
+
+  if (creationTime != null && lastSignInTime != null) {
+    final isFirstLogin = creationTime == lastSignInTime;
+    if (isFirstLogin && mounted) {
+      // 首次登录 → 跳转偏好页
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (context) => const PreferencePage()),
+      );
+    }
+  }
     } on FirebaseAuthException catch (e) {
       // 处理 Firebase 认证异常
       String message = 'Login failed';

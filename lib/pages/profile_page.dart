@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:hotel_reservation_app/auth_gate.dart';
 import 'package:hotel_reservation_app/services/auth_service.dart';
 import 'package:hotel_reservation_app/services/database_service.dart';
 
@@ -65,8 +66,6 @@ class ProfilePage extends StatelessWidget {
             _buildUserDetailsCard(phone, "123 Elm Street, Springfield"),
             const SizedBox(height: 30),
 
-            _buildBookingHistory(),
-            const SizedBox(height: 30),
 
             // ✅ 新增按钮：编辑偏好
             _buildEditPreferenceButton(context),
@@ -109,18 +108,28 @@ class ProfilePage extends StatelessWidget {
         ),
         const SizedBox(width: 10),
         TextButton(
-          onPressed: () async {
-            await AuthService().signOut();
-          },
-          style: TextButton.styleFrom(
-            backgroundColor: const Color(0xFF212121),
-            foregroundColor: Colors.white,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(20),
-            ),
-          ),
-          child: const Text("Logout"),
-        ),
+  onPressed: () async {
+    await AuthService().signOut();
+
+    // ✅ 退出后跳回 AuthGate
+    if (context.mounted) {
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (_) => const AuthGate()),
+        (route) => false,
+      );
+    }
+  },
+  style: TextButton.styleFrom(
+    backgroundColor: const Color(0xFF212121),
+    foregroundColor: Colors.white,
+    shape: RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(20),
+    ),
+  ),
+  child: const Text("Logout"),
+),
+
       ],
     );
   }
@@ -150,71 +159,7 @@ class ProfilePage extends StatelessWidget {
     );
   }
 
-  // --- 预订历史 ---
-  Widget _buildBookingHistory() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          "Booking History",
-          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-        ),
-        const SizedBox(height: 12),
-
-        _buildBookingItem(
-          "City View Hotel",
-          "Stayed: July 2023",
-          "https://images.unsplash.com/photo-1566073771259-6a8506099945?fit=crop&w=200&h=160",
-        ),
-        const SizedBox(height: 12),
-
-        _buildBookingItem(
-          "Woodland Cabin",
-          "Stayed: December 2022",
-          "https://images.unsplash.com/photo-1533101563233-3a1ab63155aa?fit=crop&w=200&h=160",
-        ),
-      ],
-    );
-  }
-
-  // 单个历史项
-  Widget _buildBookingItem(String title, String subtitle, String imageUrl) {
-    return Card(
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      clipBehavior: Clip.antiAlias,
-      child: Row(
-        children: [
-          Image.network(
-            imageUrl,
-            width: 100,
-            height: 80,
-            fit: BoxFit.cover,
-            errorBuilder: (context, error, stackTrace) => Container(
-              width: 100,
-              height: 80,
-              color: Colors.grey[200],
-              child:
-                  Icon(Icons.broken_image, color: Colors.grey[400]),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title,
-                    style: const TextStyle(fontWeight: FontWeight.bold)),
-                const SizedBox(height: 4),
-                Text(subtitle,
-                    style: TextStyle(color: Colors.grey[600], fontSize: 12)),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+  
 
   // ✅ 新增：编辑个人偏好按钮
   Widget _buildEditPreferenceButton(BuildContext context) {

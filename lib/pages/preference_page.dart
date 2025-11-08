@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:hotel_reservation_app/app_shell.dart';
 
 class PreferencePage extends StatefulWidget {
   const PreferencePage({super.key});
@@ -8,33 +11,100 @@ class PreferencePage extends StatefulWidget {
 }
 
 class _PreferencePageState extends State<PreferencePage> {
-  String? selectedLocation;
-  String? selectedRoomType;
-  bool includeBreakfast = false;
-  bool includeWifi = false;
+  String? floor;
+  String? view;
+  String? environment;
+  bool familyFriendly = false;
+  bool accessibility = false;
 
-  final List<String> locations = ['Kuala Lumpur', 'Penang', 'Langkawi'];
-  final List<String> roomTypes = ['Suite', 'Standard', 'Economy'];
+  bool loading = true;
 
-  void _savePreferences() async {
-    // 🔹 这里你可以保存到 Firestore 或 SharedPreferences
-    // final prefs = await SharedPreferences.getInstance();
-    // await prefs.setString('location', selectedLocation ?? '');
-    // await prefs.setString('roomType', selectedRoomType ?? '');
-    // await prefs.setBool('breakfast', includeBreakfast);
-    // await prefs.setBool('wifi', includeWifi);
+  final List<String> floorOptions = [
+    'No Preference',
+    'Low Floor',
+    'Middle Floor',
+    'High Floor'
+  ];
 
-    // 🔹 保存后返回主页
-    Navigator.pop(context);
+  final List<String> viewOptions = [
+    'No Preference',
+    'City View',
+    'Sea View',
+    'Garden View'
+  ];
+
+  final List<String> environmentOptions = [
+    'No Preference',
+    'Quiet',
+    'Lively',
+    'Natural'
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPreferences();
   }
 
-  void _skip() {
-    // 用户点击右上角叉号（不想输入偏好）
-    Navigator.pop(context);
+  Future<void> _loadPreferences() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+
+    final doc = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(uid)
+        .collection('preferences')
+        .doc('userPrefs')
+        .get();
+
+    if (doc.exists) {
+      final data = doc.data()!;
+      floor = data['preferredFloor'] == '' ? null : data['preferredFloor'];
+      view = data['preferredView'] == '' ? null : data['preferredView'];
+      environment =
+          data['preferredEnvironment'] == '' ? null : data['preferredEnvironment'];
+      familyFriendly = data['familyFriendly'] ?? false;
+      accessibility = data['accessibility'] ?? false;
+    }
+
+    setState(() => loading = false);
   }
+
+  Future<void> _savePreferences() async {
+  final uid = FirebaseAuth.instance.currentUser?.uid;
+  if (uid == null) return;
+
+  await FirebaseFirestore.instance
+      .collection('users')
+      .doc(uid)
+      .collection('preferences')
+      .doc('userPrefs')
+      .set({
+    'preferredFloor': floor ?? '',
+    'preferredView': view ?? '',
+    'preferredEnvironment': environment ?? '',
+    'familyFriendly': familyFriendly,
+    'accessibility': accessibility,
+    'updatedAt': Timestamp.now(),
+  });
+
+  // ✅ 保存后跳转回 Search（Tab 0）
+  Navigator.pushAndRemoveUntil(
+    context,
+    MaterialPageRoute(builder: (_) => const AppShell(initialIndex: 0)),
+    (route) => false,
+  );
+}
+
 
   @override
   Widget build(BuildContext context) {
+    if (loading) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
     return Scaffold(
       backgroundColor: Colors.grey[100],
       appBar: AppBar(
@@ -42,103 +112,119 @@ class _PreferencePageState extends State<PreferencePage> {
         elevation: 0,
         centerTitle: true,
         title: const Text(
-          'Set Your Preferences',
+          'Set Personal Preferences',
           style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
         ),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.close, color: Colors.black), // ✅ 右上角叉号
-            onPressed: _skip,
-          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text(
+              "Skip",
+              style: TextStyle(color: Colors.black, fontSize: 16),
+            ),
+          )
         ],
       ),
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Preferred Location',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                ),
-                const SizedBox(height: 8),
-                DropdownButtonFormField<String>(
-                  value: selectedLocation,
-                  hint: const Text('Choose location'),
-                  decoration: _inputDecoration(),
-                  items: locations
-                      .map((loc) =>
-                          DropdownMenuItem(value: loc, child: Text(loc)))
-                      .toList(),
-                  onChanged: (val) => setState(() => selectedLocation = val),
-                ),
-                const SizedBox(height: 20),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _title("Preferred Floor"),
+            _box(_dropdown(
+              selectedValue: floor,
+              options: floorOptions,
+              onSelected: (v) =>
+                  setState(() => floor = v == "No Preference" ? null : v),
+            )),
+            const SizedBox(height: 20),
 
-                const Text(
-                  'Preferred Room Type',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                ),
-                const SizedBox(height: 8),
-                DropdownButtonFormField<String>(
-                  value: selectedRoomType,
-                  hint: const Text('Choose room type'),
-                  decoration: _inputDecoration(),
-                  items: roomTypes
-                      .map((type) =>
-                          DropdownMenuItem(value: type, child: Text(type)))
-                      .toList(),
-                  onChanged: (val) => setState(() => selectedRoomType = val),
-                ),
-                const SizedBox(height: 20),
+            _title("Preferred View"),
+            _box(_dropdown(
+              selectedValue: view,
+              options: viewOptions,
+              onSelected: (v) =>
+                  setState(() => view = v == "No Preference" ? null : v),
+            )),
+            const SizedBox(height: 20),
 
-                const Text(
-                  'Additional Preferences',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                ),
-                const SizedBox(height: 8),
-                CheckboxListTile(
-                  value: includeBreakfast,
-                  onChanged: (v) => setState(() => includeBreakfast = v!),
-                  title: const Text('Include breakfast'),
-                ),
-                CheckboxListTile(
-                  value: includeWifi,
-                  onChanged: (v) => setState(() => includeWifi = v!),
-                  title: const Text('Free WiFi'),
-                ),
+            _title("Preferred Environment"),
+            _box(_dropdown(
+              selectedValue: environment,
+              options: environmentOptions,
+              onSelected: (v) =>
+                  setState(() => environment = v == "No Preference" ? null : v),
+            )),
+            const SizedBox(height: 20),
 
-                const SizedBox(height: 30),
+            _title("Family Friendly"),
+            _box(
+              Switch(
+                value: familyFriendly,
+                onChanged: (v) => setState(() => familyFriendly = v),
+              ),
+            ),
+            const SizedBox(height: 20),
 
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: _savePreferences,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.black,
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                    ),
-                    child: const Text('Save Preferences'),
+            _title("Accessibility Needed"),
+            _box(
+              Switch(
+                value: accessibility,
+                onChanged: (v) => setState(() => accessibility = v),
+              ),
+            ),
+            const SizedBox(height: 40),
+
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: _savePreferences,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.black,
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
                   ),
                 ),
-              ],
+                child: const Text("Save Preferences"),
+              ),
             ),
-          ),
+          ],
         ),
       ),
     );
   }
 
-  InputDecoration _inputDecoration() => InputDecoration(
-        fillColor: Colors.white,
-        filled: true,
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide.none,
-        ),
+  Widget _title(String s) => Text(
+        s,
+        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
       );
+
+  Widget _box(Widget child) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: child,
+    );
+  }
+
+  Widget _dropdown({
+    required String? selectedValue,
+    required List<String> options,
+    required ValueChanged<String?> onSelected,
+  }) {
+    return DropdownButtonFormField<String>(
+      value: selectedValue ?? "No Preference",
+      decoration: const InputDecoration(border: InputBorder.none),
+      items: options
+          .map(
+            (o) => DropdownMenuItem(value: o, child: Text(o)),
+          )
+          .toList(),
+      onChanged: onSelected,
+    );
+  }
 }

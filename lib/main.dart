@@ -3,10 +3,17 @@ import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
 
-// 入口相关页面
-import 'package:hotel_reservation_app/pages/splash_screen.dart';  // ✅ 启动动画页
-import 'package:hotel_reservation_app/auth_gate.dart';            // ✅ 登录判断页
+// ✅ 你的入口相关页面
+import 'package:hotel_reservation_app/pages/splash_screen.dart';
+import 'package:hotel_reservation_app/auth_gate.dart';
 import 'package:hotel_reservation_app/pages/preference_page.dart';
+import 'package:hotel_reservation_app/pages/booking_page.dart';
+
+// ✅ 导入 AppShell
+import 'package:hotel_reservation_app/app_shell.dart';
+
+// ✅ 定义全局 key（给 SlideTransitionNotification 切换 Info 页用）
+final GlobalKey<AppShellState> appShellKey = GlobalKey<AppShellState>();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -24,19 +31,22 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       title: 'Hotel Reservation App',
       debugShowCheckedModeBanner: false,
+
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
         useMaterial3: true,
       ),
 
-      // ✅ 一开始先进启动页，启动页会再跳到 AuthGate
+      // ✅ 第一步：启动动画 → 然后跳 AuthGate → 然后去 AppShell
       home: const SplashScreen(),
 
-      // ✅ 这里先把会用到的页面注册起来
       routes: {
         '/auth': (context) => const AuthGate(),
         '/preferences': (context) => const PreferencePage(),
-        // 以后我们加：'/roomDetail': (...) 和 '/bookings': (...) 就行
+        '/booking': (context) => const BookingPage(),
+
+        // ✅ “所有页面最终都进入 AppShell”
+        '/app': (context) => AppShell(key: appShellKey),
       },
     );
   }

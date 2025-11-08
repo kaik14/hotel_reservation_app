@@ -1,34 +1,415 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:hotel_reservation_app/pages/room_detail_page.dart';
+import 'package:intl/intl.dart';
 
-class SearchPage extends StatelessWidget {
+class SearchPage extends StatefulWidget {
   const SearchPage({super.key});
 
   @override
+  State<SearchPage> createState() => _SearchPageState();
+}
+
+class _SearchPageState extends State<SearchPage> {
+  final TextEditingController _searchController = TextEditingController();
+  String _searchKeyword = '';
+  DateTime? _checkInDate;
+  DateTime? _checkOutDate;
+
+  Map<String, dynamic> userPrefs = {};
+  bool loadingPrefs = true;
+  
+
+  final CollectionReference roomsRef =
+      FirebaseFirestore.instance.collection('rooms');
+
+  /// ✅ 默认推荐房型
+  final List<String> defaultRecommendedIDs = ['R02', 'R04', 'R07'];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserPreferences();
+  }
+
+  /// ✅ 读取用户偏好
+  Future<void> _loadUserPreferences() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+
+    final doc = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(uid)
+        .collection('preferences')
+        .doc('userPrefs')
+        .get();
+
+    if (doc.exists) userPrefs = doc.data()!;
+
+    setState(() => loadingPrefs = false);
+  }
+
+  /// ✅ 是否有偏好
+  bool get hasPreference {
+    return (userPrefs['preferredFloor'] != null &&
+            userPrefs['preferredFloor'] != '') ||
+        (userPrefs['preferredView'] != null &&
+            userPrefs['preferredView'] != '') ||
+        (userPrefs['preferredEnvironment'] != null &&
+            userPrefs['preferredEnvironment'] != '') ||
+        (userPrefs['familyFriendly'] == true) ||
+        (userPrefs['accessibility'] == true);
+  }
+
+  /// ✅ 匹配偏好
+  bool matchesPreferences(DocumentSnapshot doc) {
+    final data = doc.data() as Map<String, dynamic>;
+
+    if (userPrefs['preferredFloor'] != null &&
+        userPrefs['preferredFloor'] != '') {
+      if (data['floorLevel'] != userPrefs['preferredFloor']) return false;
+    }
+    if (userPrefs['preferredView'] != null &&
+        userPrefs['preferredView'] != '') {
+      if (data['viewType'] != userPrefs['preferredView']) return false;
+    }
+    if (userPrefs['preferredEnvironment'] != null &&
+        userPrefs['preferredEnvironment'] != '') {
+      if (data['environmentType'] != userPrefs['preferredEnvironment']) {
+        return false;
+      }
+    }
+    if (userPrefs['familyFriendly'] == true &&
+        data['familyFriendly'] != true) return false;
+
+    if (userPrefs['accessibility'] == true &&
+        data['accessible'] != true) return false;
+
+    return true;
+  }
+
+  /// ✅ 检查房型是否在指定日期有空房
+  bool roomTypeAvailableBetween(Map<String, dynamic> data) {
+    if (_checkInDate == null || _checkOutDate == null) return true;
+
+    final List rooms = data['rooms'] ?? [];
+    final iso = DateFormat('yyyy-MM-dd');
+
+    for (final r in rooms) {
+      final Set booked = Set<String>.from(
+          List.from(r['bookedDates'] ?? []).map((e) => e.toString()));
+
+      bool conflict = false;
+      DateTime d = _checkInDate!;
+
+      while (!d.isAfter(_checkOutDate!.subtract(const Duration(days: 1)))) {
+        final key = iso.format(d);
+        if (booked.contains(key)) {
+          conflict = true;
+          break;
+        }
+        d = d.add(const Duration(days: 1));
+      }
+
+      if (!conflict) return true; // ✅ 至少有一间房可住
+    }
+
+    return false;
+  }
+
+  /// ✅ 日期选择器
+  Future<void> _selectDate(BuildContext context, bool isCheckIn) async {
+    final now = DateTime.now();
+    DateTime initial = now;
+    DateTime first = now;
+
+    if (isCheckIn && _checkInDate != null) initial = _checkInDate!;
+    if (!isCheckIn && _checkInDate != null) {
+      first = _checkInDate!.add(const Duration(days: 1));
+      initial = _checkOutDate ?? first;
+    }
+
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: initial,
+      firstDate: first,
+      lastDate: DateTime(2026, 12, 31),
+    );
+
+    if (picked != null) {
+      setState(() {
+        if (isCheckIn) {
+          _checkInDate = picked;
+          if (_checkOutDate != null && picked.isAfter(_checkOutDate!)) {
+            _checkOutDate = null;
+          }
+        } else {
+          _checkOutDate = picked;
+        }
+      });
+    }
+  }
+
+  /// ✅ 打开房型详情
+  void _openRoom(DocumentSnapshot room, Map<String, dynamic> data) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => RoomDetailPage(
+          docId: room.id,
+          title: data['titleEN'],
+          imageUrl: 'assets/rooms/${data['imageName']}',
+          price: "RM${data['price']} per night",
+          description: data['description'] ?? '',
+          imageName: data['imageName'],
+          initialCheckIn: _checkInDate,
+          initialCheckOut: _checkOutDate,
+        ),
+      ),
+    );
+  }
+
+  /// ✅ 搜索结果（加入日期过滤）
+  Widget _buildSearchResults() {
+    return StreamBuilder<QuerySnapshot>(
+      stream: roomsRef.snapshots(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+
+        final filtered = snapshot.data!.docs.where((doc) {
+          final data = doc.data() as Map<String, dynamic>;
+          final title = data['titleEN'].toLowerCase();
+          final desc = (data['description'] ?? '').toLowerCase();
+
+          final keywordMatch = _searchKeyword.isEmpty ||
+              title.contains(_searchKeyword) ||
+              desc.contains(_searchKeyword);
+
+          if (!keywordMatch) return false;
+
+          return roomTypeAvailableBetween(data); // ✅ 按入住日期过滤
+        }).toList();
+
+        if (filtered.isEmpty) {
+          return const Center(child: Text("No matching rooms found."));
+        }
+
+        return GridView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 2,
+            childAspectRatio: 0.9,
+          ),
+          itemCount: filtered.length,
+          itemBuilder: (context, i) {
+            final room = filtered[i];
+            final data = room.data() as Map<String, dynamic>;
+
+            return RoomCard(
+              title: data['titleEN'],
+              price: "RM${data['price']} per night",
+              imageUrl: 'assets/rooms/${data['imageName']}',
+              onTap: () => _openRoom(room, data),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  /// ✅ 推荐房型（加入日期过滤）
+  Widget _recommendedSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text("Recommended Rooms",
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 12),
+
+        StreamBuilder<QuerySnapshot>(
+          stream: roomsRef.snapshots(),
+          builder: (context, snapshot) {
+            if (!snapshot.hasData) return const Text("Loading...");
+
+            final docs = snapshot.data!.docs;
+            List<QueryDocumentSnapshot> result;
+
+            // ✅ 用户未选择日期 → 原逻辑
+            if (_checkInDate == null || _checkOutDate == null) {
+              if (!hasPreference) {
+                result = docs
+                    .where((d) => defaultRecommendedIDs.contains(d.id))
+                    .toList();
+              } else {
+                result = docs.where((d) => matchesPreferences(d)).toList();
+              }
+            } else {
+              // ✅ 用户已选择日期 → 必须可入住
+              if (!hasPreference) {
+                result = docs.where((d) {
+                  if (!defaultRecommendedIDs.contains(d.id)) return false;
+                  return roomTypeAvailableBetween(d.data() as Map<String, dynamic>);
+                }).toList();
+              } else {
+                result = docs.where((d) {
+                  if (!matchesPreferences(d)) return false;
+                  return roomTypeAvailableBetween(d.data() as Map<String, dynamic>);
+                }).toList();
+              }
+            }
+
+            if (result.isEmpty) return const Text("No recommended rooms available.");
+
+            return _recommendedList(result);
+          },
+        ),
+      ],
+    );
+  }
+
+  /// ✅ 推荐房型列表
+  Widget _recommendedList(List<QueryDocumentSnapshot> rooms) {
+    return SizedBox(
+      height: 240,
+      child: ListView.builder(
+        scrollDirection: Axis.horizontal,
+        itemCount: rooms.length,
+        itemBuilder: (context, i) {
+          final room = rooms[i];
+          final data = room.data() as Map<String, dynamic>;
+
+          return RoomCard(
+            title: data['titleEN'],
+            price: "RM${data['price']} per night",
+            imageUrl: 'assets/rooms/${data['imageName']}',
+            onTap: () => _openRoom(room, data),
+          );
+        },
+      ),
+    );
+  }
+
+  /// ✅ 热门房型（保留原逻辑）
+  Widget _popularSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text("Popular Choices",
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 12),
+
+        StreamBuilder<QuerySnapshot>(
+          stream: roomsRef.where('popular', isEqualTo: true).snapshots(),
+          builder: (context, snapshot) {
+            if (!snapshot.hasData) return const Text("Loading...");
+
+            final rooms = snapshot.data!.docs;
+
+            return GridView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 2,
+                childAspectRatio: 0.9,
+              ),
+              itemCount: rooms.length,
+              itemBuilder: (context, index) {
+                final room = rooms[index];
+                final data = room.data() as Map<String, dynamic>;
+
+                return RoomCard(
+                  title: data['titleEN'],
+                  price: "RM${data['price']} per night",
+                  imageUrl: 'assets/rooms/${data['imageName']}',
+                  onTap: () => _openRoom(room, data),
+                );
+              },
+            );
+          },
+        ),
+      ],
+    );
+  }
+
+  /// ✅ 日期按钮
+  Widget _dateButton(String label, DateTime? date, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        margin: const EdgeInsets.symmetric(vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            colors: [
+              Color.fromARGB(255, 232, 229, 240),
+              Color(0xFFEFE7FF),
+            ],
+          ),
+          borderRadius: BorderRadius.circular(22),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black12,
+              blurRadius: 12,
+              offset: Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(label,
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                )),
+            Row(
+              children: [
+                Text(
+                  date == null
+                      ? 'Select Date'
+                      : '${date.day}/${date.month}/${date.year}',
+                  style: const TextStyle(
+                    fontSize: 15,
+                    color: Colors.black54,
+                  ),
+                ),
+                const SizedBox(width: 6),
+                const Icon(Icons.calendar_today, size: 18, color: Colors.grey),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final screenWidth = MediaQuery.of(context).size.width;
-    final isTabletOrPC = screenWidth > 600;
+    if (loadingPrefs) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
 
     return Scaffold(
       backgroundColor: Colors.grey[100],
       appBar: AppBar(
-        title: const Text('Find your perfect stay'),
+        title: const Text('Find Your Perfect Stay'),
+        centerTitle: true,
         backgroundColor: Colors.white,
         elevation: 0,
-        titleTextStyle: TextStyle(
-          color: Colors.black,
-          fontSize: isTabletOrPC ? 22 : 18,
-          fontWeight: FontWeight.bold,
-        ),
-        centerTitle: true,
       ),
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          padding: const EdgeInsets.all(16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // 搜索框
+              _dateButton('Check-in', _checkInDate, () => _selectDate(context, true)),
+              _dateButton('Check-out', _checkOutDate, () => _selectDate(context, false)),
+              const SizedBox(height: 16),
+
+              /// ✅ 搜索栏
               Row(
                 children: [
                   Expanded(
@@ -38,18 +419,21 @@ class SearchPage extends StatelessWidget {
                         color: Colors.white,
                         borderRadius: BorderRadius.circular(14),
                       ),
-                      child: const TextField(
-                        decoration: InputDecoration(
-                          hintText: 'Search for your preference',
+                      child: TextField(
+                        controller: _searchController,
+                        decoration: const InputDecoration(
                           border: InputBorder.none,
+                          hintText: 'Search by room name or description',
                         ),
+                        onChanged: (v) =>
+                            setState(() => _searchKeyword = v.toLowerCase()),
                       ),
                     ),
                   ),
                   const SizedBox(width: 10),
                   Container(
-                    height: isTabletOrPC ? 54 : 46,
-                    width: isTabletOrPC ? 54 : 46,
+                    height: 46,
+                    width: 46,
                     decoration: BoxDecoration(
                       color: Colors.black,
                       borderRadius: BorderRadius.circular(14),
@@ -59,104 +443,18 @@ class SearchPage extends StatelessWidget {
                 ],
               ),
 
-              const SizedBox(height: 24),
-
-              // 推荐房间
-              Text(
-                'Recommended Rooms',
-                style: TextStyle(
-                  fontSize: isTabletOrPC ? 22 : 18,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 12),
-
-              // ✅ 用 SizedBox 包裹 ListView 并加上固定高度，防止 overflow
-              SizedBox(
-                height: isTabletOrPC ? 300 : 240,
-                child: ListView(
-                  scrollDirection: Axis.horizontal,
-                  children: const [
-                    RoomCard(
-                      title: 'Ocean View Suite',
-                      price: 'RM250 per night',
-                      imageUrl: 'https://picsum.photos/seed/ocean/400/250',
-                    ),
-                    RoomCard(
-                      title: 'Mountain Retreat',
-                      price: 'RM180 per night',
-                      imageUrl: 'https://picsum.photos/seed/mountain/400/250',
-                    ),
-                    RoomCard(
-                      title: 'City Apartment',
-                      price: 'RM230 per night',
-                      imageUrl: 'https://picsum.photos/seed/city/400/250',
-                    ),
-                  ],
-                ),
-              ),
-
               const SizedBox(height: 28),
 
-              // 热门房间
-              Text(
-                'Popular Choices',
-                style: TextStyle(
-                  fontSize: isTabletOrPC ? 22 : 18,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 12),
-
-              // ✅ 固定高度的网格布局
-              SizedBox(
-                height: isTabletOrPC ? 600 : 500, // ✅ 固定高度区域
-                child: LayoutBuilder(
-                  builder: (context, constraints) {
-                    int crossCount = constraints.maxWidth > 900
-                        ? 4
-                        : constraints.maxWidth > 600
-                            ? 3
-                            : 2;
-
-                    return GridView.count(
-                      crossAxisCount: crossCount, // 每行多少列
-                      mainAxisSpacing: 14, // 上下间距
-                      crossAxisSpacing: 14, // 左右间距
-                      childAspectRatio:
-                          isTabletOrPC ? 1.0 : 0.8, // 卡片宽高比例
-                      physics:
-                          const BouncingScrollPhysics(), // ✅ 在固定高度内可轻微滑动
-                      children: const [
-                        PopularCard(
-                          title: 'Downtown Loft',
-                          price: 'RM220 per night',
-                          imageUrl: 'https://picsum.photos/seed/loft/400/300',
-                        ),
-                        PopularCard(
-                          title: 'Urban Studio',
-                          price: 'RM210 per night',
-                          imageUrl: 'https://picsum.photos/seed/studio/400/300',
-                        ),
-                        PopularCard(
-                          title: 'Economy Room',
-                          price: 'RM180 per night',
-                          imageUrl:
-                              'https://picsum.photos/seed/economy/400/300',
-                        ),
-                        PopularCard(
-                          title: 'Standard Room',
-                          price: 'RM190 per night',
-                          imageUrl:
-                              'https://picsum.photos/seed/standard/400/300',
-                        ),
-                      ],
-                    );
-                  },
-                ),
-              ),
-
-              const SizedBox(height: 40), // 页面底部留白
+              if (_searchKeyword.isNotEmpty) ...[
+                const Text("Search Results",
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 12),
+                _buildSearchResults(),
+              ] else ...[
+                _recommendedSection(),
+                const SizedBox(height: 28),
+                _popularSection(),
+              ]
             ],
           ),
         ),
@@ -165,15 +463,19 @@ class SearchPage extends StatelessWidget {
   }
 }
 
-// -------------------- 推荐房卡 --------------------
+/// ✅ 房型卡片组件
 class RoomCard extends StatelessWidget {
   final String title;
   final String price;
   final String imageUrl;
+  final VoidCallback onTap;
+
   const RoomCard({
+    super.key,
     required this.title,
     required this.price,
     required this.imageUrl,
+    required this.onTap,
   });
 
   @override
@@ -186,119 +488,34 @@ class RoomCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(18),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 6,
-            offset: const Offset(0, 2),
-          ),
+              color: Colors.black.withOpacity(0.05),
+              blurRadius: 6,
+              offset: const Offset(0, 2))
         ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // ✅ 加高度确保图片加载出来
           ClipRRect(
             borderRadius: const BorderRadius.vertical(top: Radius.circular(18)),
-            child: Image.network(
+            child: Image.asset(
               imageUrl,
-              height: 120,
-              width: double.infinity,
-              fit: BoxFit.cover,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 10),
-            child: Text(title,
-                style:
-                    const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
-          ),
-          const SizedBox(height: 4),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 10),
-            child: Text(price,
-                style: const TextStyle(fontSize: 12, color: Colors.grey)),
-          ),
-          const Spacer(),
-          Padding(
-            padding: const EdgeInsets.all(10),
-            child: Align(
-              alignment: Alignment.centerRight,
-              child: ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.black,
-                  minimumSize: const Size(90, 32),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                ),
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => RoomDetailPage(
-                        title: title,
-                        imageUrl: imageUrl,
-                        price: price,
-                      ),
-                    ),
-                  );
-                },
-                child: const Text('Book Now', style: TextStyle(fontSize: 12)),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// -------------------- 热门房卡 --------------------
-class PopularCard extends StatelessWidget {
-  final String title;
-  final String price;
-  final String imageUrl;
-  const PopularCard({
-    required this.title,
-    required this.price,
-    required this.imageUrl,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 6,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          ClipRRect(
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-            child: Image.network(
-              imageUrl,
-              height: 110,
+              height: 95,
               width: double.infinity,
               fit: BoxFit.cover,
             ),
           ),
           const SizedBox(height: 6),
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 10),
             child: Text(title,
-                style:
-                    const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                    fontSize: 14, fontWeight: FontWeight.bold)),
           ),
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 10),
             child: Text(price,
                 style: const TextStyle(fontSize: 12, color: Colors.grey)),
           ),
@@ -308,26 +525,17 @@ class PopularCard extends StatelessWidget {
             child: Align(
               alignment: Alignment.centerRight,
               child: ElevatedButton(
+                onPressed: onTap,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.black,
                   minimumSize: const Size(90, 32),
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(20),
-                  ),
+                      borderRadius: BorderRadius.circular(20)),
                 ),
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => RoomDetailPage(
-                        title: title,
-                        imageUrl: imageUrl,
-                        price: price,
-                      ),
-                    ),
-                  );
-                },
-                child: const Text('Book Now', style: TextStyle(fontSize: 12)),
+                child: const Text(
+                  'Book Now',
+                  style: TextStyle(fontSize: 12, color: Colors.white),
+                ),
               ),
             ),
           ),

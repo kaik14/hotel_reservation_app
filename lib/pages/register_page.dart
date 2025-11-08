@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:hotel_reservation_app/pages/preference_page.dart';
 import 'package:hotel_reservation_app/services/auth_service.dart';
 
 class RegisterPage extends StatefulWidget {
@@ -38,9 +39,17 @@ class _RegisterPageState extends State<RegisterPage> {
         _phoneController.text,
       );
 
+      if (mounted) {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (context) => const PreferencePage()),
+        );
+      }
+    
+
       // 4. 注册成功后，AuthGate 会自动处理跳转，
       //    但由于我们是 PUSH 进来的，最好是 pop 回去
-      if (mounted) Navigator.pop(context);
+      
     } on FirebaseAuthException catch (e) {
       // 5. 处理 Firebase Auth 异常
       String message = 'Registration failed';

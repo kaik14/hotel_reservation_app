@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:hotel_reservation_app/data/info_data.dart';
-import 'package:hotel_reservation_app/pages/info_page.dart';
+import 'package:hotel_reservation_app/app_shell.dart';
 
 class BookingSuccessPage extends StatefulWidget {
-  final InfoMessage? message; // 接收上个页面传入的消息
+  final InfoMessage? message;
+
   const BookingSuccessPage({super.key, this.message});
 
   @override
@@ -14,36 +15,43 @@ class _BookingSuccessPageState extends State<BookingSuccessPage>
     with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   late Animation<double> _scaleAnimation;
+  OverlayEntry? _overlayEntry; // ✅ 防止 overlay 丢失引用
 
   @override
   void initState() {
     super.initState();
 
-    // 动画控制器
+    // ✅ 弹出动画
     _controller = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 800),
     );
     _scaleAnimation =
         CurvedAnimation(parent: _controller, curve: Curves.elasticOut);
+
     _controller.forward();
 
-    // 动画结束后显示消息提示
-    Future.delayed(const Duration(seconds: 1, milliseconds: 200), () {
-      if (widget.message != null) {
+    // ✅ 如果有系统消息 → 显示通知
+    Future.delayed(const Duration(milliseconds: 300), () {
+      if (widget.message != null && mounted) {
         _showTopNotification(context, widget.message!);
       }
     });
 
-    // 动画 2 秒后自动返回首页
+    // ✅ 停留 2 秒 → 跳 SearchPage（index = 0）
     Future.delayed(const Duration(seconds: 2), () {
-      Navigator.popUntil(context, (route) => route.isFirst);
+      if (!mounted) return;
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (_) => const AppShell(initialIndex: 0)),
+        (route) => false,
+      );
     });
   }
 
+  /// ✅ 顶部通知（可停留 5 秒，不受跳转影响）
   void _showTopNotification(BuildContext context, InfoMessage message) {
-    late OverlayEntry entry;
-    entry = OverlayEntry(
+    _overlayEntry = OverlayEntry(
       builder: (context) => Positioned(
         top: 50,
         left: 20,
@@ -52,17 +60,18 @@ class _BookingSuccessPageState extends State<BookingSuccessPage>
       ),
     );
 
-    final overlay = Overlay.of(context);
-    overlay.insert(entry);
+    Overlay.of(context).insert(_overlayEntry!);
 
-    Future.delayed(const Duration(seconds: 3), () {
-      entry.remove();
+    Future.delayed(const Duration(seconds: 5), () {
+      _overlayEntry?.remove();
+      _overlayEntry = null;
     });
   }
 
   @override
   void dispose() {
     _controller.dispose();
+    _overlayEntry?.remove(); // ✅ 安全移除 overlay
     super.dispose();
   }
 
@@ -75,18 +84,18 @@ class _BookingSuccessPageState extends State<BookingSuccessPage>
           scale: _scaleAnimation,
           child: Column(
             mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.check_circle, color: Colors.green, size: 100),
-              const SizedBox(height: 20),
-              const Text(
+            children: const [
+              Icon(Icons.check_circle, color: Colors.green, size: 100),
+              SizedBox(height: 20),
+              Text(
                 "Booking Successful!",
                 style: TextStyle(
                     fontSize: 22,
                     fontWeight: FontWeight.bold,
                     color: Colors.black87),
               ),
-              const SizedBox(height: 8),
-              const Text(
+              SizedBox(height: 8),
+              Text(
                 "Your reservation has been confirmed.",
                 style: TextStyle(color: Colors.grey),
               ),
@@ -98,7 +107,9 @@ class _BookingSuccessPageState extends State<BookingSuccessPage>
   }
 }
 
-/// 顶部气泡动画组件
+///////////////////////////////////////////////////////////////////////////////
+/// ✅ 顶部通知（点击跳 InfoPage index = 3）
+///////////////////////////////////////////////////////////////////////////////
 class SlideTransitionNotification extends StatefulWidget {
   final InfoMessage message;
   const SlideTransitionNotification({super.key, required this.message});
@@ -117,11 +128,19 @@ class _SlideTransitionNotificationState
   @override
   void initState() {
     super.initState();
+
     _controller = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 500));
+      vsync: this,
+      duration: const Duration(milliseconds: 500),
+    );
+
     _offsetAnimation = Tween<Offset>(
-            begin: const Offset(0, -1.5), end: const Offset(0, 0))
-        .animate(CurvedAnimation(parent: _controller, curve: Curves.easeOutBack));
+      begin: const Offset(0, -1.5),
+      end: const Offset(0, 0),
+    ).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeOutBack),
+    );
+
     _controller.forward();
   }
 
@@ -131,13 +150,18 @@ class _SlideTransitionNotificationState
       position: _offsetAnimation,
       child: GestureDetector(
         onTap: () {
-          Navigator.push(
-              context, MaterialPageRoute(builder: (_) => const InfoPage()));
+          Navigator.pushAndRemoveUntil(
+            context,
+            MaterialPageRoute(
+              builder: (_) => const AppShell(initialIndex: 3),
+            ),
+            (route) => false,
+          );
         },
         child: Material(
+          color: Colors.blueAccent,
           elevation: 6,
           borderRadius: BorderRadius.circular(12),
-          color: Colors.blueAccent,
           child: Container(
             padding: const EdgeInsets.all(14),
             child: Row(
@@ -147,9 +171,7 @@ class _SlideTransitionNotificationState
                 Expanded(
                   child: Text(
                     "New Message: ${widget.message.title}",
-                    style:
-                        const TextStyle(color: Colors.white, fontSize: 15),
-                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(color: Colors.white, fontSize: 15),
                   ),
                 ),
               ],
