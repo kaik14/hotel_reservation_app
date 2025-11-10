@@ -3,8 +3,17 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/services.dart';
+
 import 'package:hotel_reservation_app/data/info_data.dart';
 import 'package:hotel_reservation_app/app_shell.dart';
+
+/// —— 统一配色（与 BookingDetailPage 保持一致）——
+class _Brand {
+  static const bg = Color.fromARGB(255, 222, 228, 236); // 浅蓝灰背景
+  static const bar = Color(0xFF0F1722); // 顶栏/底栏深色
+  static const accent = Color.fromARGB(255, 49, 59, 83); // 品牌按钮色
+}
 
 class BookingEditPage extends StatefulWidget {
   final String bookingId;
@@ -42,7 +51,6 @@ class _BookingEditPageState extends State<BookingEditPage> {
       firstDate: now,
       lastDate: DateTime(2026, 12, 31),
     );
-
     if (picked == null) return;
 
     setState(() {
@@ -57,29 +65,26 @@ class _BookingEditPageState extends State<BookingEditPage> {
     });
   }
 
-  // ✅ 保存修改
+  // ✅ 保存修改（逻辑不变）
   Future<void> _saveChanges() async {
     if (_checkIn == null || _checkOut == null) return;
-
     setState(() => _saving = true);
 
     try {
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) throw Exception("User not logged in.");
 
-      // ✅ 更新用户 booking
       await FirebaseFirestore.instance
           .collection('users')
           .doc(user.uid)
           .collection('bookings')
           .doc(widget.bookingId)
           .update({
-        'checkIn': Timestamp.fromDate(_checkIn!),
-        'checkOut': Timestamp.fromDate(_checkOut!),
-        'guests': _guests,
-      });
+            'checkIn': Timestamp.fromDate(_checkIn!),
+            'checkOut': Timestamp.fromDate(_checkOut!),
+            'guests': _guests,
+          });
 
-      // ✅ 创建通知内容
       final msg = InfoMessage(
         title: "Booking Updated",
         message:
@@ -88,36 +93,31 @@ class _BookingEditPageState extends State<BookingEditPage> {
         timestamp: DateTime.now(),
       );
 
-      // ✅ 写入用户自己的 messages
       await FirebaseFirestore.instance
           .collection('users')
           .doc(user.uid)
           .collection('messages')
           .add({
-        'title': msg.title,
-        'message': msg.message,
-        'senderIcon': msg.senderIcon,
-        'timestamp': Timestamp.fromDate(msg.timestamp),
-      });
+            'title': msg.title,
+            'message': msg.message,
+            'senderIcon': msg.senderIcon,
+            'timestamp': Timestamp.fromDate(msg.timestamp),
+          });
 
-      // ✅ 显示蓝色通知（OverlayEntry，不受页面跳转影响）
       _showTopNotification(context, msg);
-
       Navigator.pop(context, true);
-
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Error: $e")),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text("Error: $e")));
     } finally {
       if (mounted) setState(() => _saving = false);
     }
   }
 
-  /// ✅ 蓝色系统通知
+  /// ✅ 顶部蓝色通知浮层
   void _showTopNotification(BuildContext context, InfoMessage message) {
     late OverlayEntry entry;
-
     entry = OverlayEntry(
       builder: (_) => Positioned(
         top: 50,
@@ -126,12 +126,8 @@ class _BookingEditPageState extends State<BookingEditPage> {
         child: SlideTransitionNotification(message: message),
       ),
     );
-
     Overlay.of(context).insert(entry);
-
-    Future.delayed(const Duration(seconds: 5), () {
-      entry.remove();
-    });
+    Future.delayed(const Duration(seconds: 5), () => entry.remove());
   }
 
   @override
@@ -144,18 +140,65 @@ class _BookingEditPageState extends State<BookingEditPage> {
 
     final title = widget.data['roomTypeTitle'] ?? 'Room';
 
+    final bottomSafe = MediaQuery.of(context).padding.bottom;
+
     return Scaffold(
+      // —— 顶部栏与 Detail 对齐（97 高 + 返回键） —— //
       appBar: AppBar(
-        title: const Text("Edit Booking"),
-        backgroundColor: Colors.white,
+        backgroundColor: _Brand.bar,
         elevation: 0,
-        centerTitle: true,
+        centerTitle: false,
+        titleSpacing: 8,
+        toolbarHeight: 97,
+        systemOverlayStyle: const SystemUiOverlayStyle(
+          statusBarColor: _Brand.bar,
+          statusBarIconBrightness: Brightness.light,
+          statusBarBrightness: Brightness.dark,
+        ),
+        leadingWidth: 48,
+        leading: IconButton(
+          icon: const Icon(Icons.chevron_left, color: Colors.white, size: 30),
+          onPressed: () => Navigator.maybePop(context),
+          tooltip: 'Back',
+        ),
+        title: const Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Edit Booking',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 24,
+                fontWeight: FontWeight.w800,
+                letterSpacing: -0.2,
+              ),
+            ),
+            SizedBox(height: 4),
+            Text(
+              'Adjust your dates and guests.',
+              style: TextStyle(
+                color: Color(0x99FFFFFF),
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
       ),
-      backgroundColor: Colors.grey[100],
+
+      backgroundColor: _Brand.bg,
+
+      // —— 底部栏与 Detail 完全一致：height: 75 + bottomSafe（纯色、无圆角、无图标） —— //
+      bottomNavigationBar: Container(
+        height: 75 + bottomSafe,
+        decoration: const BoxDecoration(color: _Brand.bar),
+      ),
+
+      // —— 内容 —— //
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.start, // 左对齐
           children: [
             ClipRRect(
               borderRadius: BorderRadius.circular(16),
@@ -168,9 +211,11 @@ class _BookingEditPageState extends State<BookingEditPage> {
             ),
             const SizedBox(height: 16),
 
-            Text(title,
-                style:
-                    const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+            Text(
+              title,
+              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+              textAlign: TextAlign.left,
+            ),
             const SizedBox(height: 20),
 
             _dateField("Check-in", _checkIn, () => _pickDate(true), dateFmt),
@@ -178,20 +223,26 @@ class _BookingEditPageState extends State<BookingEditPage> {
             _dateField("Check-out", _checkOut, () => _pickDate(false), dateFmt),
 
             const SizedBox(height: 20),
-            const Text("Guests",
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            const Text(
+              "Guests",
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+              textAlign: TextAlign.left,
+            ),
 
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text("$_guests Guest${_guests > 1 ? 's' : ''}",
-                    style: const TextStyle(fontSize: 15)),
+                Text(
+                  "$_guests Guest${_guests > 1 ? 's' : ''}",
+                  style: const TextStyle(fontSize: 15),
+                ),
                 Row(
                   children: [
                     IconButton(
                       icon: const Icon(Icons.remove_circle_outline),
-                      onPressed:
-                          _guests > 1 ? () => setState(() => _guests--) : null,
+                      onPressed: _guests > 1
+                          ? () => setState(() => _guests--)
+                          : null,
                     ),
                     IconButton(
                       icon: const Icon(Icons.add_circle_outline),
@@ -209,8 +260,13 @@ class _BookingEditPageState extends State<BookingEditPage> {
               child: ElevatedButton(
                 onPressed: _saving ? null : _saveChanges,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.black,
+                  backgroundColor: _Brand.accent,
                   padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  shadowColor: _Brand.accent.withOpacity(.25),
+                  elevation: 4,
                 ),
                 child: _saving
                     ? const CircularProgressIndicator(color: Colors.white)
@@ -227,7 +283,11 @@ class _BookingEditPageState extends State<BookingEditPage> {
   }
 
   Widget _dateField(
-      String label, DateTime? date, VoidCallback onTap, DateFormat fmt) {
+    String label,
+    DateTime? date,
+    VoidCallback onTap,
+    DateFormat fmt,
+  ) {
     return InkWell(
       onTap: onTap,
       child: Container(
@@ -236,11 +296,18 @@ class _BookingEditPageState extends State<BookingEditPage> {
           color: Colors.white,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(color: Colors.grey.shade300),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x14000000),
+              blurRadius: 10,
+              offset: Offset(0, 4),
+            ),
+          ],
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(label, style: const TextStyle(fontWeight: FontWeight.bold)),
+            Text(label, style: const TextStyle(fontWeight: FontWeight.w600)),
             Text(
               date != null ? fmt.format(date) : "Select Date",
               style: const TextStyle(color: Colors.black87),
@@ -252,7 +319,7 @@ class _BookingEditPageState extends State<BookingEditPage> {
   }
 }
 
-/// ✅ 蓝色通知浮层组件
+/// ✅ 顶部通知浮层（保持一致）
 class SlideTransitionNotification extends StatefulWidget {
   final InfoMessage message;
   const SlideTransitionNotification({super.key, required this.message});
@@ -271,19 +338,14 @@ class _SlideTransitionNotificationState
   @override
   void initState() {
     super.initState();
-
     _controller = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 450),
     );
-
     _offsetAnimation = Tween<Offset>(
       begin: const Offset(0, -1.5),
       end: const Offset(0, 0),
-    ).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeOutBack),
-    );
-
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOutBack));
     _controller.forward();
   }
 
@@ -295,26 +357,24 @@ class _SlideTransitionNotificationState
         onTap: () {
           Navigator.pushAndRemoveUntil(
             context,
-            MaterialPageRoute(
-              builder: (_) => const AppShell(initialIndex: 3), // ✅ 跳 Info 页面
-            ),
+            MaterialPageRoute(builder: (_) => const AppShell(initialIndex: 3)),
             (route) => false,
           );
         },
         child: Material(
-          color: Colors.blueAccent,
+          color: _Brand.accent,
           elevation: 6,
           borderRadius: BorderRadius.circular(12),
           child: Container(
             padding: const EdgeInsets.all(14),
             child: Row(
-              children: [
-                const Icon(Icons.notifications_active, color: Colors.white),
-                const SizedBox(width: 10),
+              children: const [
+                Icon(Icons.notifications_active, color: Colors.white),
+                SizedBox(width: 10),
                 Expanded(
                   child: Text(
-                    "New Message: ${widget.message.title}",
-                    style: const TextStyle(color: Colors.white, fontSize: 15),
+                    "New Message",
+                    style: TextStyle(color: Colors.white, fontSize: 15),
                   ),
                 ),
               ],

@@ -1,16 +1,14 @@
-import 'package:flutter/material.dart';
-
 /// ✅ 系统专属图标（本地 assets）
 /// 记得把图标放在：assets/icons/hotel_icon.png
 const String systemIconAsset = 'assets/icons/hotel_icon.png';
 
 /// ✅ InfoMessage 数据模型
 class InfoMessage {
-  final String title;       // 消息标题
-  final String message;     // 消息内容
-  final String senderIcon;  // 'system' → 系统图标；其他为用户/网络图标
+  final String title; // 消息标题
+  final String message; // 消息内容
+  final String senderIcon; // 'system' → 系统图标；其他为用户/网络图标
   final DateTime timestamp; // 消息时间
-  bool isRead;              // 是否已读
+  bool isRead; // 是否已读
 
   InfoMessage({
     required this.title,
@@ -45,4 +43,3 @@ class InfoMessage {
 
 /// ✅ 全局消息列表（所有通知都存在这里）
 List<InfoMessage> infoMessages = [];
-

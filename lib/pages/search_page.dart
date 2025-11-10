@@ -3,6 +3,22 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:hotel_reservation_app/pages/room_detail_page.dart';
 import 'package:intl/intl.dart';
+import 'package:flutter/services.dart'; // 状态栏样式
+
+// —— 统一的配色（与 Service 页一致）——
+class _Brand {
+  static const bg = Color.fromARGB(255, 222, 228, 236); // 浅蓝灰
+  static const bar = Color(0xFF0F1722); // 顶栏深色
+  static const accent = Color.fromARGB(
+    255,
+    49,
+    59,
+    83,
+  ); // 按钮品牌蓝（= Service 页 View details）
+  // 日期按钮的浅蓝灰渐变，既显得可点又不喧宾夺主
+  static const dateGradStart = Color(0xFFEFF3F8);
+  static const dateGradEnd = Color(0xFFE3EAF5);
+}
 
 class SearchPage extends StatefulWidget {
   const SearchPage({super.key});
@@ -19,10 +35,10 @@ class _SearchPageState extends State<SearchPage> {
 
   Map<String, dynamic> userPrefs = {};
   bool loadingPrefs = true;
-  
 
-  final CollectionReference roomsRef =
-      FirebaseFirestore.instance.collection('rooms');
+  final CollectionReference roomsRef = FirebaseFirestore.instance.collection(
+    'rooms',
+  );
 
   /// ✅ 默认推荐房型
   final List<String> defaultRecommendedIDs = ['R02', 'R04', 'R07'];
@@ -80,11 +96,13 @@ class _SearchPageState extends State<SearchPage> {
         return false;
       }
     }
-    if (userPrefs['familyFriendly'] == true &&
-        data['familyFriendly'] != true) return false;
+    if (userPrefs['familyFriendly'] == true && data['familyFriendly'] != true) {
+      return false;
+    }
 
-    if (userPrefs['accessibility'] == true &&
-        data['accessible'] != true) return false;
+    if (userPrefs['accessibility'] == true && data['accessible'] != true) {
+      return false;
+    }
 
     return true;
   }
@@ -98,7 +116,8 @@ class _SearchPageState extends State<SearchPage> {
 
     for (final r in rooms) {
       final Set booked = Set<String>.from(
-          List.from(r['bookedDates'] ?? []).map((e) => e.toString()));
+        List.from(r['bookedDates'] ?? []).map((e) => e.toString()),
+      );
 
       bool conflict = false;
       DateTime d = _checkInDate!;
@@ -175,14 +194,17 @@ class _SearchPageState extends State<SearchPage> {
     return StreamBuilder<QuerySnapshot>(
       stream: roomsRef.snapshots(),
       builder: (context, snapshot) {
-        if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+        if (!snapshot.hasData) {
+          return const Center(child: CircularProgressIndicator());
+        }
 
         final filtered = snapshot.data!.docs.where((doc) {
           final data = doc.data() as Map<String, dynamic>;
           final title = data['titleEN'].toLowerCase();
           final desc = (data['description'] ?? '').toLowerCase();
 
-          final keywordMatch = _searchKeyword.isEmpty ||
+          final keywordMatch =
+              _searchKeyword.isEmpty ||
               title.contains(_searchKeyword) ||
               desc.contains(_searchKeyword);
 
@@ -224,10 +246,11 @@ class _SearchPageState extends State<SearchPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text("Recommended Rooms",
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+        const Text(
+          "Recommended Rooms",
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+        ),
         const SizedBox(height: 12),
-
         StreamBuilder<QuerySnapshot>(
           stream: roomsRef.snapshots(),
           builder: (context, snapshot) {
@@ -250,17 +273,23 @@ class _SearchPageState extends State<SearchPage> {
               if (!hasPreference) {
                 result = docs.where((d) {
                   if (!defaultRecommendedIDs.contains(d.id)) return false;
-                  return roomTypeAvailableBetween(d.data() as Map<String, dynamic>);
+                  return roomTypeAvailableBetween(
+                    d.data() as Map<String, dynamic>,
+                  );
                 }).toList();
               } else {
                 result = docs.where((d) {
                   if (!matchesPreferences(d)) return false;
-                  return roomTypeAvailableBetween(d.data() as Map<String, dynamic>);
+                  return roomTypeAvailableBetween(
+                    d.data() as Map<String, dynamic>,
+                  );
                 }).toList();
               }
             }
 
-            if (result.isEmpty) return const Text("No recommended rooms available.");
+            if (result.isEmpty) {
+              return const Text("No recommended rooms available.");
+            }
 
             return _recommendedList(result);
           },
@@ -272,7 +301,7 @@ class _SearchPageState extends State<SearchPage> {
   /// ✅ 推荐房型列表
   Widget _recommendedList(List<QueryDocumentSnapshot> rooms) {
     return SizedBox(
-      height: 240,
+      height: 210,
       child: ListView.builder(
         scrollDirection: Axis.horizontal,
         itemCount: rooms.length,
@@ -296,10 +325,11 @@ class _SearchPageState extends State<SearchPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text("Popular Choices",
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+        const Text(
+          "Popular Choices",
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+        ),
         const SizedBox(height: 12),
-
         StreamBuilder<QuerySnapshot>(
           stream: roomsRef.where('popular', isEqualTo: true).snapshots(),
           builder: (context, snapshot) {
@@ -312,7 +342,8 @@ class _SearchPageState extends State<SearchPage> {
               physics: const NeverScrollableScrollPhysics(),
               gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                 crossAxisCount: 2,
-                childAspectRatio: 0.9,
+                childAspectRatio: 0.90,
+                mainAxisSpacing: 20, // ✅ 上下距离
               ),
               itemCount: rooms.length,
               itemBuilder: (context, index) {
@@ -333,22 +364,18 @@ class _SearchPageState extends State<SearchPage> {
     );
   }
 
-  /// ✅ 日期按钮
+  /// ✅ 单个日期“按钮”（配色已改为浅蓝灰系；内部不设外边距，方便在一行排布）
   Widget _dateButton(String label, DateTime? date, VoidCallback onTap) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        margin: const EdgeInsets.symmetric(vertical: 10),
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         decoration: BoxDecoration(
           gradient: const LinearGradient(
-            colors: [
-              Color.fromARGB(255, 232, 229, 240),
-              Color(0xFFEFE7FF),
-            ],
+            colors: [_Brand.dateGradStart, Color.fromARGB(255, 147, 160, 181)],
           ),
           borderRadius: BorderRadius.circular(22),
-          boxShadow: [
+          boxShadow: const [
             BoxShadow(
               color: Colors.black12,
               blurRadius: 12,
@@ -359,26 +386,14 @@ class _SearchPageState extends State<SearchPage> {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(label,
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                )),
-            Row(
-              children: [
-                Text(
-                  date == null
-                      ? 'Select Date'
-                      : '${date.day}/${date.month}/${date.year}',
-                  style: const TextStyle(
-                    fontSize: 15,
-                    color: Colors.black54,
-                  ),
-                ),
-                const SizedBox(width: 6),
-                const Icon(Icons.calendar_today, size: 18, color: Colors.grey),
-              ],
+            // 左侧标签
+            Text(
+              label, // 'Check-in' / 'Check-out'
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
             ),
+
+            // 右侧仅保留日历图标（黑色）
+            const Icon(Icons.calendar_today, size: 18, color: Colors.black),
           ],
         ),
       ),
@@ -392,24 +407,80 @@ class _SearchPageState extends State<SearchPage> {
     }
 
     return Scaffold(
-      backgroundColor: Colors.grey[100],
+      // 背景统一
+      backgroundColor: _Brand.bg,
+
+      // 顶栏统一为：Hi, Yunice + 副标题
       appBar: AppBar(
-        title: const Text('Find Your Perfect Stay'),
-        centerTitle: true,
-        backgroundColor: Colors.white,
+        backgroundColor: _Brand.bar,
         elevation: 0,
+        centerTitle: false,
+        titleSpacing: 20,
+        toolbarHeight: 97,
+        systemOverlayStyle: const SystemUiOverlayStyle(
+          statusBarColor: _Brand.bar,
+          statusBarIconBrightness: Brightness.light,
+          statusBarBrightness: Brightness.dark,
+        ),
+        title: const Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Hi, Yunice',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 24,
+                fontWeight: FontWeight.w800,
+                letterSpacing: -0.2,
+              ),
+            ),
+            SizedBox(height: 4),
+            Text(
+              'Find the perfect room for your stay.',
+              style: TextStyle(
+                color: Color(0x99FFFFFF),
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(0.5),
+          child: Container(height: 0.5, color: Colors.white.withOpacity(0.08)),
+        ),
       ),
+
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _dateButton('Check-in', _checkInDate, () => _selectDate(context, true)),
-              _dateButton('Check-out', _checkOutDate, () => _selectDate(context, false)),
+              // —— Check-in / Check-out 并排一行 —— //
+              Row(
+                children: [
+                  Expanded(
+                    child: _dateButton(
+                      'Check-in',
+                      _checkInDate,
+                      () => _selectDate(context, true),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _dateButton(
+                      'Check-out',
+                      _checkOutDate,
+                      () => _selectDate(context, false),
+                    ),
+                  ),
+                ],
+              ),
+
               const SizedBox(height: 16),
 
-              /// ✅ 搜索栏
+              /// ✅ 搜索栏（按钮改为品牌蓝）
               Row(
                 children: [
                   Expanded(
@@ -423,7 +494,7 @@ class _SearchPageState extends State<SearchPage> {
                         controller: _searchController,
                         decoration: const InputDecoration(
                           border: InputBorder.none,
-                          hintText: 'Search by room name or description',
+                          hintText: 'Search By Room Name Or Description',
                         ),
                         onChanged: (v) =>
                             setState(() => _searchKeyword = v.toLowerCase()),
@@ -435,8 +506,15 @@ class _SearchPageState extends State<SearchPage> {
                     height: 46,
                     width: 46,
                     decoration: BoxDecoration(
-                      color: Colors.black,
+                      color: _Brand.accent, // ← 品牌蓝
                       borderRadius: BorderRadius.circular(14),
+                      boxShadow: [
+                        BoxShadow(
+                          color: _Brand.accent.withOpacity(.25),
+                          blurRadius: 12,
+                          offset: const Offset(0, 6),
+                        ),
+                      ],
                     ),
                     child: const Icon(Icons.search, color: Colors.white),
                   ),
@@ -446,15 +524,17 @@ class _SearchPageState extends State<SearchPage> {
               const SizedBox(height: 28),
 
               if (_searchKeyword.isNotEmpty) ...[
-                const Text("Search Results",
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                const Text(
+                  "Search Results",
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
                 const SizedBox(height: 12),
                 _buildSearchResults(),
               ] else ...[
                 _recommendedSection(),
                 const SizedBox(height: 28),
                 _popularSection(),
-              ]
+              ],
             ],
           ),
         ),
@@ -488,9 +568,10 @@ class RoomCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(18),
         boxShadow: [
           BoxShadow(
-              color: Colors.black.withOpacity(0.05),
-              blurRadius: 6,
-              offset: const Offset(0, 2))
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
         ],
       ),
       child: Column(
@@ -508,16 +589,19 @@ class RoomCard extends StatelessWidget {
           const SizedBox(height: 6),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 10),
-            child: Text(title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                    fontSize: 14, fontWeight: FontWeight.bold)),
+            child: Text(
+              title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+            ),
           ),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 10),
-            child: Text(price,
-                style: const TextStyle(fontSize: 12, color: Colors.grey)),
+            child: Text(
+              price,
+              style: const TextStyle(fontSize: 12, color: Colors.grey),
+            ),
           ),
           const Spacer(),
           Padding(
@@ -527,10 +611,13 @@ class RoomCard extends StatelessWidget {
               child: ElevatedButton(
                 onPressed: onTap,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.black,
+                  backgroundColor: _Brand.accent, // ← 品牌蓝
                   minimumSize: const Size(90, 32),
+                  shadowColor: _Brand.accent.withOpacity(.25),
+                  elevation: 4,
                   shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(20)),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
                 ),
                 child: const Text(
                   'Book Now',

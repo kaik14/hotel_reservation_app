@@ -23,21 +23,21 @@ class _PreferencePageState extends State<PreferencePage> {
     'No Preference',
     'Low Floor',
     'Middle Floor',
-    'High Floor'
+    'High Floor',
   ];
 
   final List<String> viewOptions = [
     'No Preference',
     'City View',
     'Sea View',
-    'Garden View'
+    'Garden View',
   ];
 
   final List<String> environmentOptions = [
     'No Preference',
     'Quiet',
     'Lively',
-    'Natural'
+    'Natural',
   ];
 
   @override
@@ -61,8 +61,9 @@ class _PreferencePageState extends State<PreferencePage> {
       final data = doc.data()!;
       floor = data['preferredFloor'] == '' ? null : data['preferredFloor'];
       view = data['preferredView'] == '' ? null : data['preferredView'];
-      environment =
-          data['preferredEnvironment'] == '' ? null : data['preferredEnvironment'];
+      environment = data['preferredEnvironment'] == ''
+          ? null
+          : data['preferredEnvironment'];
       familyFriendly = data['familyFriendly'] ?? false;
       accessibility = data['accessibility'] ?? false;
     }
@@ -71,38 +72,35 @@ class _PreferencePageState extends State<PreferencePage> {
   }
 
   Future<void> _savePreferences() async {
-  final uid = FirebaseAuth.instance.currentUser?.uid;
-  if (uid == null) return;
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
 
-  await FirebaseFirestore.instance
-      .collection('users')
-      .doc(uid)
-      .collection('preferences')
-      .doc('userPrefs')
-      .set({
-    'preferredFloor': floor ?? '',
-    'preferredView': view ?? '',
-    'preferredEnvironment': environment ?? '',
-    'familyFriendly': familyFriendly,
-    'accessibility': accessibility,
-    'updatedAt': Timestamp.now(),
-  });
+    await FirebaseFirestore.instance
+        .collection('users')
+        .doc(uid)
+        .collection('preferences')
+        .doc('userPrefs')
+        .set({
+          'preferredFloor': floor ?? '',
+          'preferredView': view ?? '',
+          'preferredEnvironment': environment ?? '',
+          'familyFriendly': familyFriendly,
+          'accessibility': accessibility,
+          'updatedAt': Timestamp.now(),
+        });
 
-  // ✅ 保存后跳转回 Search（Tab 0）
-  Navigator.pushAndRemoveUntil(
-    context,
-    MaterialPageRoute(builder: (_) => const AppShell(initialIndex: 0)),
-    (route) => false,
-  );
-}
-
+    // ✅ 保存后跳转回 Search（Tab 0）
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute(builder: (_) => const AppShell(initialIndex: 0)),
+      (route) => false,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     if (loading) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      );
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
     return Scaffold(
@@ -122,7 +120,7 @@ class _PreferencePageState extends State<PreferencePage> {
               "Skip",
               style: TextStyle(color: Colors.black, fontSize: 16),
             ),
-          )
+          ),
         ],
       ),
       body: SingleChildScrollView(
@@ -131,30 +129,37 @@ class _PreferencePageState extends State<PreferencePage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _title("Preferred Floor"),
-            _box(_dropdown(
-              selectedValue: floor,
-              options: floorOptions,
-              onSelected: (v) =>
-                  setState(() => floor = v == "No Preference" ? null : v),
-            )),
+            _box(
+              _dropdown(
+                selectedValue: floor,
+                options: floorOptions,
+                onSelected: (v) =>
+                    setState(() => floor = v == "No Preference" ? null : v),
+              ),
+            ),
             const SizedBox(height: 20),
 
             _title("Preferred View"),
-            _box(_dropdown(
-              selectedValue: view,
-              options: viewOptions,
-              onSelected: (v) =>
-                  setState(() => view = v == "No Preference" ? null : v),
-            )),
+            _box(
+              _dropdown(
+                selectedValue: view,
+                options: viewOptions,
+                onSelected: (v) =>
+                    setState(() => view = v == "No Preference" ? null : v),
+              ),
+            ),
             const SizedBox(height: 20),
 
             _title("Preferred Environment"),
-            _box(_dropdown(
-              selectedValue: environment,
-              options: environmentOptions,
-              onSelected: (v) =>
-                  setState(() => environment = v == "No Preference" ? null : v),
-            )),
+            _box(
+              _dropdown(
+                selectedValue: environment,
+                options: environmentOptions,
+                onSelected: (v) => setState(
+                  () => environment = v == "No Preference" ? null : v,
+                ),
+              ),
+            ),
             const SizedBox(height: 20),
 
             _title("Family Friendly"),
@@ -196,9 +201,9 @@ class _PreferencePageState extends State<PreferencePage> {
   }
 
   Widget _title(String s) => Text(
-        s,
-        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
-      );
+    s,
+    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+  );
 
   Widget _box(Widget child) {
     return Container(
@@ -217,12 +222,10 @@ class _PreferencePageState extends State<PreferencePage> {
     required ValueChanged<String?> onSelected,
   }) {
     return DropdownButtonFormField<String>(
-      value: selectedValue ?? "No Preference",
+      initialValue: selectedValue ?? "No Preference",
       decoration: const InputDecoration(border: InputBorder.none),
       items: options
-          .map(
-            (o) => DropdownMenuItem(value: o, child: Text(o)),
-          )
+          .map((o) => DropdownMenuItem(value: o, child: Text(o)))
           .toList(),
       onChanged: onSelected,
     );

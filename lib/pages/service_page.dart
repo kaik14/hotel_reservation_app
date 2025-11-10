@@ -1,340 +1,349 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart'; // ← 用于设置状态栏图标/文字颜色
 
-enum ServiceType { spa, swim, clean, gym, laundry, taxi }
-
-class ServicePage extends StatefulWidget {
+/// Ultra-minimal, single-column Services page.
+/// - Light theme to pair with the dark bottom bar in AppShell
+/// - Clean header (title + subtitle), no bell, no search
+/// - Vertical list cards with subtle shadow & hairline border
+/// - Staggered fade+slide entrance
+class ServicePage extends StatelessWidget {
   const ServicePage({super.key});
 
   @override
-  State<ServicePage> createState() => _ServicePageState();
-}
-
-class _ServicePageState extends State<ServicePage> {
-  // ====== 状态 ======
-  ServiceType _service = ServiceType.spa;
-  DateTime _selectedDate = DateTime.now();
-  String? _selectedTime;
-
-  int _adults = 0;
-  int _kids = 0;
-  int _pets = 0;
-
-  final List<String> _timeSlots = const [
-    '12:00pm', '01:00pm', '02:00pm', '03:00pm', '04:00pm', '05:00pm',
-  ];
-
-  // 可按需修改价格
-  final Map<ServiceType, int> _basePrice = const {
-    ServiceType.spa: 168,
-    ServiceType.swim: 60,
-    ServiceType.clean: 120,
-    ServiceType.gym: 50,
-    ServiceType.laundry: 20,
-    ServiceType.taxi: 30,
-  };
-
-  String get _serviceName {
-    switch (_service) {
-      case ServiceType.spa:
-        return 'SPA';
-      case ServiceType.swim:
-        return 'Swim';
-      case ServiceType.clean:
-        return 'Clean';
-      case ServiceType.gym:
-        return 'Gym';
-      case ServiceType.laundry:
-        return 'Laundry';
-      case ServiceType.taxi:
-        return 'Taxi';
-    }
-  }
-  
-int get _totalPrice => _basePrice[_service] ?? 0;
-
-String _fmtDate(DateTime d) =>
-    '${_monthName(d.month)} ${d.day}, ${d.year}'; // 简单格式化：March 15, 2024
-
-String _monthName(int m) {
-  const names = [
-    'January',
-    'February',
-    'March',
-    'April',
-    'May',
-    'June',
-    'July',
-    'August',
-    'September',
-    'October',
-    'November',
-    'December'
-  ];
-  return names[m - 1];
-}
-
-@override
-Widget build(BuildContext context) {
-  return Scaffold(
-    backgroundColor: Colors.white, // 跟你现在的风格一致
-    appBar: AppBar(
-      title: const Text('Service'),
-      backgroundColor: Colors.white,
-      elevation: 0,
-      titleTextStyle: const TextStyle(
-        color: Colors.black,
-        fontSize: 20,
-        fontWeight: FontWeight.w500,
+  Widget build(BuildContext context) {
+    return Theme(
+      data: Theme.of(context).copyWith(
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: _LightPalette.accentBlue,
+          brightness: Brightness.light,
+          primary: _LightPalette.accentBlue,
+          surface: _LightPalette.bg,
+          onSurface: _LightPalette.textPrimary,
+        ),
+        scaffoldBackgroundColor: _LightPalette.bg,
+        textTheme: Theme.of(context).textTheme.apply(
+          bodyColor: _LightPalette.textPrimary,
+          displayColor: _LightPalette.textPrimary,
+        ),
       ),
-      iconTheme: const IconThemeData(color: Colors.black),
-    ),
-    body: SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        children: [
-          _sectionCard(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _sectionTitle('Service'),
-                const SizedBox(height: 8),
-                _serviceChips(),
-              ],
-            ),
-          ),
-          const SizedBox(height: 12),
-          
-_sectionCard(
-  child: Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      _sectionTitle('Service Date'),
-      const SizedBox(height: 8),
-      _calendar(),
-    ],
-  ),
-),
-const SizedBox(height: 12),
-
-_sectionCard(
-  child: Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      _sectionTitle('Service Time'),
-      const SizedBox(height: 8),
-      _timeSlotWrap(),
-    ],
-  ),
-),
-const SizedBox(height: 12),
-
-_sectionCard(
-  child: Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      _sectionTitle('Guest'),
-      const SizedBox(height: 8),
-      _counterRow('Adult', _adults, onMinus: () {
-        setState(() => _adults = (_adults > 0) ? _adults - 1 : 0);
-      }, onPlus: () {
-        setState(() => _adults += 1);
-      }),
-      const Divider(height: 24),
-      _counterRow('Kids', _kids, onMinus: () {
-        setState(() => _kids = (_kids > 0) ? _kids - 1 : 0);
-      }, onPlus: () {
-        setState(() => _kids += 1);
-      }),
-      const Divider(height: 24),
-      _counterRow('Pet', _pets, onMinus: () {
-        setState(() => _pets = (_pets > 0) ? _pets - 1 : 0);
-      }, onPlus: () {
-        setState(() => _pets += 1);
-      }),
-    ],
-  ),
-),
-const SizedBox(height: 12),
-
-          _sectionCard(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _sectionTitle('Booking Details'),
-                const SizedBox(height: 8),
-                _kv('Service Name', _serviceName),
-                _kv('Service Date', _fmtDate(_selectedDate)),
-                _kv('Service Time', _selectedTime ?? '--:--'),
-                const SizedBox(height: 8),
-                Text(
-                  'Total Price: RM$_totalPrice',
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: (_selectedTime == null)
-                        ? null
-                        : () {
-                      // TODO: 这里接入你的提交逻辑（如写入 Firebase / 调后端）
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(
-                            'Booked $_serviceName on ${_fmtDate(_selectedDate)} at ${_selectedTime!}',
-                          ),
-                        ),
-                      );
-                    },
-                    style: ElevatedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                    ),
-                    child: const Text('Confirm Booking'),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    ),
-  );
-}
-
-// ====== 下面是一些可复用的小部件 ======
-Widget _sectionCard({required Widget child}) {
-  return Container(
-    width: double.infinity,
-    padding: const EdgeInsets.all(14),
-    decoration: BoxDecoration(
-      color: const Color(0xFFF5F5F7),
-      borderRadius: BorderRadius.circular(16),
-      border: Border.all(color: const Color(0xFFE2E2E8)),
-    ),
-    child: child,
-  );
-}
-
-Widget _sectionTitle(String title) {
-  return Row(
-    children: [
-      const Icon(Icons.circle, size: 10, color: Colors.black54),
-      const SizedBox(width: 6),
-      Text(
-        title,
-        style: const TextStyle(fontWeight: FontWeight.w700),
-      ),
-    ],
-  );
-}
-
-Widget _serviceChips() {
-  Widget chip(ServiceType type, IconData icon, String label) {
-    final selected = _service == type;
-    return ChoiceChip(
-      selected: selected,
-      label: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 18),
-          const SizedBox(width: 6),
-          Text(label),
-        ],
-      ),
-      selectedColor: Colors.black87,
-      labelStyle: TextStyle(color: selected ? Colors.white : Colors.black87),
-      onSelected: (_) => setState(() => _service = type),
+      child: const _ServiceScaffold(),
     );
   }
-  return Wrap(
-    spacing: 8,
-    runSpacing: 8,
-    children: [
-      chip(ServiceType.spa, Icons.spa, 'SPA'),
-      chip(ServiceType.swim, Icons.pool, 'Swim'),
-      chip(ServiceType.clean, Icons.cleaning_services, 'Clean'),
-      chip(ServiceType.gym, Icons.fitness_center, 'Gym'),
-      chip(ServiceType.laundry, Icons.local_laundry_service, 'Laundry'),
-      chip(ServiceType.taxi, Icons.local_taxi, 'Taxi'),
-    ],
-  );
 }
 
-Widget _calendar() {
-  final first = DateTime(DateTime.now().year, DateTime.now().month, 1);
-  final last = DateTime(DateTime.now().year, DateTime.now().month + 3, 0); // 未来 3 个月
+class _ServiceScaffold extends StatelessWidget {
+  const _ServiceScaffold();
 
-  return CalendarDatePicker(
-    initialDate: _selectedDate,
-    firstDate: first,
-    lastDate: last,
-    onDateChanged: (date) => setState(() => _selectedDate = date),
-  );
-}
+  static const _items = <_ServiceItem>[
+    _ServiceItem(
+      'Laundry & Ironing',
+      Icons.local_laundry_service_rounded,
+      'Freshly cleaned garments with press-on care, ready when you are.',
+    ),
+    _ServiceItem(
+      'Housekeeping',
+      Icons.cleaning_services_rounded,
+      'Daily room refresh, linen change, and clutter-free comfort.',
+    ),
+    _ServiceItem(
+      'Swimming',
+      Icons.pool_rounded,
+      'Access to the hotel pool with towel service and lockers.',
+    ),
+    _ServiceItem(
+      'Hotel Taxi',
+      Icons.local_taxi_rounded,
+      'Safe, reliable rides scheduled to your itinerary.',
+    ),
+    _ServiceItem(
+      'Dining Reservation',
+      Icons.restaurant_menu_rounded,
+      'Secure your table at our signature restaurants.',
+    ),
+    _ServiceItem(
+      'Conference Hall',
+      Icons.meeting_room_rounded,
+      'Well-equipped venues for meetings and private events.',
+    ),
+    _ServiceItem(
+      'Fitness',
+      Icons.fitness_center_rounded,
+      'Gym access, personal training, and wellness guidance.',
+    ),
+    _ServiceItem(
+      'Spa Center',
+      Icons.spa_rounded,
+      'Massages, treatments, and serene recovery experiences.',
+    ),
+  ];
 
-Widget _timeSlotWrap() {
-  return Wrap(
-    spacing: 12,
-    runSpacing: 12,
-    children: _timeSlots.map((t) {
-      final selected = _selectedTime == t;
-      return ChoiceChip(
-        label: Text(t),
-        selected: selected,
-        selectedColor: Colors.black87,
-        labelStyle: TextStyle(color: selected ? Colors.white : Colors.black87),
-        onSelected: (_) => setState(() => _selectedTime = t),
-      );
-    }).toList(),
-  );
-}
-Widget _counterRow(String title, int value,
-      {required VoidCallback onMinus, required VoidCallback onPlus}) {
-    return Row(
-      children: [
-        Expanded(child: Text(title)),
-        Container(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(8),
-            color: Colors.white,
-            border: Border.all(color: const Color(0xFFE2E2E8)),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              IconButton(
-                onPressed: onMinus,
-                icon: const Icon(Icons.remove),
-                visualDensity: VisualDensity.compact,
+  @override
+  Widget build(BuildContext context) {
+    final bottomSafe = MediaQuery.of(context).padding.bottom;
+    const parentNavHeight = 72.0;
+    final bottomPadding = bottomSafe + parentNavHeight + 12;
+
+    return Scaffold(
+      backgroundColor: _LightPalette.bg,
+      appBar: AppBar(
+        // ==== 顶部栏仅此处改动 ====
+        backgroundColor: const Color(0xFF0F1722), // 深色，与底栏统一
+        elevation: 0,
+        centerTitle: false,
+        titleSpacing: 20,
+        toolbarHeight: 97, // ← 顶部栏加高（默认约 56），你可改 64/72/80
+        systemOverlayStyle: const SystemUiOverlayStyle(
+          statusBarColor: Color(0xFF0F1722),
+          statusBarIconBrightness: Brightness.light, // Android 浅色图标
+          statusBarBrightness: Brightness.dark, // iOS 深底
+        ),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: const [
+            Text(
+              'Hi, Yunice',
+              style: TextStyle(
+                color: Colors.white, // 深色顶栏下标题用白色
+                fontSize: 24,
+                fontWeight: FontWeight.w800,
+                letterSpacing: -0.2,
               ),
-              Text('$value', style: const TextStyle(fontWeight: FontWeight.w600)),
-              IconButton(
-                onPressed: onPlus,
-                icon: const Icon(Icons.add),
-                visualDensity: VisualDensity.compact,
+            ),
+            SizedBox(height: 4),
+            Text(
+              'Pick what you need, anytime.',
+              style: TextStyle(
+                color: Color(0x99FFFFFF), // 次要文字半透明白
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+        // 可选的细分隔线：想更“纯平”可删掉
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(0.5),
+          child: Container(height: 0.5, color: Colors.white.withOpacity(0.08)),
+        ),
+      ),
+      body: ListView.separated(
+        physics: const BouncingScrollPhysics(),
+        padding: EdgeInsets.fromLTRB(20, 8, 20, bottomPadding),
+        itemCount: _items.length,
+        separatorBuilder: (_, __) => const SizedBox(height: 12),
+        itemBuilder: (context, index) {
+          final item = _items[index];
+          return _AnimatedAppear(
+            delayMs: 70 * index,
+            child: _ServiceListCard(item: item),
+          );
+        },
+      ),
+    );
+  }
+}
+
+/// ----- ANIMATION -----
+class _AnimatedAppear extends StatefulWidget {
+  final Widget child;
+  final int delayMs;
+  const _AnimatedAppear({required this.child, this.delayMs = 0});
+
+  @override
+  State<_AnimatedAppear> createState() => _AnimatedAppearState();
+}
+
+class _AnimatedAppearState extends State<_AnimatedAppear> {
+  bool _v = false;
+
+  @override
+  void initState() {
+    super.initState();
+    Future.delayed(Duration(milliseconds: widget.delayMs), () {
+      if (mounted) setState(() => _v = true);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedOpacity(
+      duration: const Duration(milliseconds: 360),
+      curve: Curves.easeOut,
+      opacity: _v ? 1 : 0,
+      child: AnimatedSlide(
+        duration: const Duration(milliseconds: 360),
+        curve: Curves.easeOutCubic,
+        offset: _v ? Offset.zero : const Offset(0, .12),
+        child: widget.child,
+      ),
+    );
+  }
+}
+
+/// ----- LIST CARD -----
+class _ServiceListCard extends StatefulWidget {
+  final _ServiceItem item;
+  const _ServiceListCard({required this.item});
+
+  @override
+  State<_ServiceListCard> createState() => _ServiceListCardState();
+}
+
+class _ServiceListCardState extends State<_ServiceListCard> {
+  double _press = 1.0;
+
+  @override
+  Widget build(BuildContext context) {
+    final iconColor = _LightPalette.icon;
+    final halo = _LightPalette.accentBlue.withOpacity(0.12);
+    final item = widget.item;
+
+    return GestureDetector(
+      onTapDown: (_) => setState(() => _press = 0.985),
+      onTapCancel: () => setState(() => _press = 1.0),
+      onTapUp: (_) => setState(() => _press = 1.0),
+      onTap: () => _snack(context, 'Coming soon: ${item.label}'),
+      child: Transform.scale(
+        scale: _press,
+        child: Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: _LightPalette.border),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x14000000),
+                blurRadius: 16,
+                offset: Offset(0, 8),
               ),
             ],
           ),
-        )
-      ],
-    );
-  }
-
-  Widget _kv(String k, String v) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        children: [
-          Expanded(child: Text(k)),
-          Text(v, style: const TextStyle(fontWeight: FontWeight.w600)),
-        ],
+          padding: const EdgeInsets.all(14),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Icon block
+              Container(
+                height: 56,
+                width: 56,
+                decoration: BoxDecoration(
+                  color: _LightPalette.iconBg,
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    Center(
+                      child: Container(
+                        width: 44,
+                        height: 44,
+                        decoration: BoxDecoration(
+                          color: halo,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                    ),
+                    Center(child: Icon(item.icon, color: iconColor, size: 26)),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 14),
+              // Title + description + CTA chip
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      item.label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: _LightPalette.textPrimary,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: .1,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      item.caption,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: _LightPalette.textSecondary,
+                        fontSize: 13,
+                        height: 1.3,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Align(
+                      // ← 只包一层 Align，把按钮靠右
+                      alignment: Alignment.centerRight,
+                      child: Container(
+                        height: 28, // ← 略矮一些
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10, // ← 水平内边距更小 → 按钮更短
+                        ),
+                        decoration: BoxDecoration(
+                          color: _LightPalette.accentBlue,
+                          borderRadius: BorderRadius.circular(8), // ← 圆角可微调
+                          boxShadow: [
+                            BoxShadow(
+                              color: _LightPalette.accentBlue.withOpacity(.24),
+                              blurRadius: 10,
+                              offset: const Offset(0, 5),
+                            ),
+                          ],
+                        ),
+                        child: const Center(
+                          child: Text(
+                            'View details', // ← 文案改这里
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: .2,
+                              fontSize: 12.0, // ← 字体略小
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
+}
+
+/// ----- MODELS & PALETTE -----
+class _ServiceItem {
+  final String label;
+  final IconData icon;
+  final String caption;
+  const _ServiceItem(this.label, this.icon, this.caption);
+}
+
+class _LightPalette {
+  static const bg = Color.fromARGB(255, 222, 228, 236); // near-white blue-gray
+  static const textPrimary = Color(0xFF0F1722); // deep slate (pairs with bar)
+  static const textSecondary = Color(0xFF5A6473);
+  static const icon = Color(0xFF1F2A44);
+  static const iconBg = Color(0xFFF0F4F9);
+  static const border = Color.fromARGB(255, 255, 255, 255);
+  static const accentBlue = Color.fromARGB(255, 49, 59, 83);
+}
+
+/// Helper
+void _snack(BuildContext context, String text) {
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(
+      content: Text(text),
+      behavior: SnackBarBehavior.floating,
+      duration: const Duration(milliseconds: 900),
+    ),
+  );
 }

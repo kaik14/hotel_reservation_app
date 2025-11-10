@@ -5,6 +5,14 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:hotel_reservation_app/data/booking_data.dart';
 import 'package:hotel_reservation_app/pages/booking_detail_page.dart';
 import 'package:hotel_reservation_app/pages/room_detail_page.dart';
+import 'package:flutter/services.dart';
+
+// —— 统一配色 —— //
+class _Brand {
+  static const bg = Color.fromARGB(255, 222, 228, 236); // 浅蓝灰背景
+  static const bar = Color(0xFF0F1722); // 顶栏深色
+  static const accent = Color.fromARGB(255, 49, 59, 83); // 品牌按钮色
+}
 
 class BookingPage extends StatelessWidget {
   const BookingPage({super.key});
@@ -14,31 +22,60 @@ class BookingPage extends StatelessWidget {
     final currentUser = FirebaseAuth.instance.currentUser;
 
     if (currentUser == null) {
-      return const Scaffold(
-        body: Center(child: Text("Not logged in")),
-      );
+      return const Scaffold(body: Center(child: Text("Not logged in")));
     }
 
-    /// ✅ 改成读取当前用户的 bookings
+    /// ✅ 只看当前用户的 bookings
     final CollectionReference bookingsRef = FirebaseFirestore.instance
         .collection('users')
         .doc(currentUser.uid)
         .collection('bookings');
 
     return Scaffold(
-      backgroundColor: Colors.grey[100],
+      backgroundColor: _Brand.bg,
+
+      // —— 深色 AppBar（97px），与全站一致 —— //
       appBar: AppBar(
-        title: const Text('My Bookings'),
-        backgroundColor: Colors.white,
+        backgroundColor: _Brand.bar,
         elevation: 0,
-        centerTitle: true,
-        titleTextStyle: const TextStyle(
-          color: Colors.black,
-          fontSize: 20,
-          fontWeight: FontWeight.bold,
+        centerTitle: false,
+        titleSpacing: 20,
+        toolbarHeight: 97,
+        systemOverlayStyle: const SystemUiOverlayStyle(
+          statusBarColor: _Brand.bar,
+          statusBarIconBrightness: Brightness.light,
+          statusBarBrightness: Brightness.dark,
+        ),
+        title: const Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'My Bookings',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 24,
+                fontWeight: FontWeight.w800,
+                letterSpacing: -0.2,
+              ),
+            ),
+            SizedBox(height: 4),
+            Text(
+              'Review your stays at a glance.',
+              style: TextStyle(
+                color: Color(0x99FFFFFF),
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(0.5),
+          child: Container(height: 0.5, color: Colors.white.withOpacity(0.08)),
         ),
       ),
 
+      // ✅ 不再有 bottomNavigationBar
       body: StreamBuilder<QuerySnapshot>(
         stream: bookingsRef.orderBy('createdAt', descending: true).snapshots(),
         builder: (context, snapshot) {
@@ -46,7 +83,6 @@ class BookingPage extends StatelessWidget {
             return const Center(child: CircularProgressIndicator());
           }
 
-          // ✅ 用户没有订单（真实情况）
           if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
             return const Center(
               child: Text(
@@ -56,7 +92,6 @@ class BookingPage extends StatelessWidget {
             );
           }
 
-          // ✅ 确保 snapshot 不为空
           final docs = snapshot.data!.docs;
           final dateFmt = DateFormat('dd MMM yyyy');
 
@@ -67,7 +102,8 @@ class BookingPage extends StatelessWidget {
               final data = docs[index].data() as Map<String, dynamic>;
 
               final title = data['roomTypeTitle'] ?? 'Unknown';
-              final imageName = data['imageName'] ?? "${data['roomTypeId']}.jpg";
+              final imageName =
+                  data['imageName'] ?? "${data['roomTypeId']}.jpg";
               final image = "assets/rooms/$imageName";
 
               final checkIn = (data['checkIn'] as Timestamp?)?.toDate();
@@ -80,7 +116,7 @@ class BookingPage extends StatelessWidget {
               final now = DateTime.now();
               final today = DateTime(now.year, now.month, now.day);
 
-              // ✅ Status Logic
+              // ✅ 状态计算（原逻辑）
               String status;
               Color bgColor;
               Color textColor;
@@ -116,11 +152,11 @@ class BookingPage extends StatelessWidget {
                   decoration: BoxDecoration(
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(16),
-                    boxShadow: [
+                    boxShadow: const [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.05),
-                        blurRadius: 6,
-                        offset: const Offset(0, 2),
+                        color: Color(0x14000000),
+                        blurRadius: 16,
+                        offset: Offset(0, 8),
                       ),
                     ],
                   ),
@@ -128,9 +164,11 @@ class BookingPage extends StatelessWidget {
                     children: [
                       Row(
                         children: [
-                          // ✅ Image
+                          // 房图
                           ClipRRect(
-                            borderRadius: const BorderRadius.horizontal(left: Radius.circular(16)),
+                            borderRadius: const BorderRadius.horizontal(
+                              left: Radius.circular(16),
+                            ),
                             child: Image.asset(
                               image,
                               height: 100,
@@ -144,19 +182,27 @@ class BookingPage extends StatelessWidget {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Text(title,
-                                      style: const TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 16)),
+                                  Text(
+                                    title,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w800,
+                                      fontSize: 16,
+                                      letterSpacing: .1,
+                                    ),
+                                  ),
                                   const SizedBox(height: 6),
                                   Text(
                                     "${checkIn != null ? dateFmt.format(checkIn) : '?'} → ${checkOut != null ? dateFmt.format(checkOut) : '?'}",
                                     style: const TextStyle(
-                                        fontSize: 13, color: Colors.black54),
+                                      fontSize: 13,
+                                      color: Colors.black54,
+                                    ),
                                   ),
                                   const SizedBox(height: 4),
-                                  Text("Room $roomNo • Guests: $guests",
-                                      style: const TextStyle(fontSize: 13)),
+                                  Text(
+                                    "Room $roomNo • Guests: $guests",
+                                    style: const TextStyle(fontSize: 13),
+                                  ),
                                 ],
                               ),
                             ),
@@ -164,16 +210,17 @@ class BookingPage extends StatelessWidget {
                         ],
                       ),
 
-                      // ✅ Right-Bottom Status + Rebook
+                      // 右下角：状态 + Rebook
                       Positioned(
                         right: 12,
                         bottom: 10,
                         child: Row(
                           children: [
-                            // ✅ Status Tag
                             Container(
                               padding: const EdgeInsets.symmetric(
-                                  horizontal: 10, vertical: 5),
+                                horizontal: 10,
+                                vertical: 5,
+                              ),
                               decoration: BoxDecoration(
                                 color: bgColor,
                                 borderRadius: BorderRadius.circular(10),
@@ -188,8 +235,6 @@ class BookingPage extends StatelessWidget {
                               ),
                             ),
                             const SizedBox(width: 8),
-
-                            // ✅ Rebook button (only if Checked In)
                             if (status == "Checked In")
                               GestureDetector(
                                 onTap: () {
@@ -209,10 +254,19 @@ class BookingPage extends StatelessWidget {
                                 },
                                 child: Container(
                                   padding: const EdgeInsets.symmetric(
-                                      horizontal: 10, vertical: 5),
+                                    horizontal: 10,
+                                    vertical: 5,
+                                  ),
                                   decoration: BoxDecoration(
-                                    color: Colors.black,
+                                    color: _Brand.accent,
                                     borderRadius: BorderRadius.circular(10),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: _Brand.accent.withOpacity(0.22),
+                                        blurRadius: 10,
+                                        offset: const Offset(0, 6),
+                                      ),
+                                    ],
                                   ),
                                   child: const Text(
                                     "Rebook",
@@ -238,7 +292,7 @@ class BookingPage extends StatelessWidget {
     );
   }
 
-  /// ✅ Local backup list
+  /// 本地备份列表（未变）
   Widget _buildLocalBookingList(BuildContext context) {
     final formatter = DateFormat('dd MMM yyyy');
 
@@ -270,11 +324,11 @@ class BookingPage extends StatelessWidget {
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(16),
-            boxShadow: [
+            boxShadow: const [
               BoxShadow(
-                color: Colors.black.withOpacity(0.05),
-                blurRadius: 6,
-                offset: const Offset(0, 2),
+                color: Color(0x14000000),
+                blurRadius: 16,
+                offset: Offset(0, 8),
               ),
             ],
           ),
@@ -283,7 +337,9 @@ class BookingPage extends StatelessWidget {
               Row(
                 children: [
                   ClipRRect(
-                    borderRadius: const BorderRadius.horizontal(left: Radius.circular(16)),
+                    borderRadius: const BorderRadius.horizontal(
+                      left: Radius.circular(16),
+                    ),
                     child: Image.asset(
                       booking.imageUrl,
                       height: 100,
@@ -297,18 +353,27 @@ class BookingPage extends StatelessWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(booking.title,
-                              style: const TextStyle(
-                                  fontWeight: FontWeight.bold, fontSize: 16)),
+                          Text(
+                            booking.title,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w800,
+                              fontSize: 16,
+                              letterSpacing: .1,
+                            ),
+                          ),
                           const SizedBox(height: 6),
                           Text(
                             "${booking.checkIn} → ${booking.checkOut}",
                             style: const TextStyle(
-                                fontSize: 13, color: Colors.black54),
+                              fontSize: 13,
+                              color: Colors.black54,
+                            ),
                           ),
                           const SizedBox(height: 4),
-                          Text("Guests: ${booking.guests}",
-                              style: const TextStyle(fontSize: 13)),
+                          Text(
+                            "Guests: ${booking.guests}",
+                            style: const TextStyle(fontSize: 13),
+                          ),
                         ],
                       ),
                     ),
@@ -319,26 +384,23 @@ class BookingPage extends StatelessWidget {
               Positioned(
                 right: 12,
                 bottom: 10,
-                child: Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 5),
-                      decoration: BoxDecoration(
-                        color: bgColor,
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Text(
-                        status,
-                        style: TextStyle(
-                          color: textColor,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 12,
-                        ),
-                      ),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 5,
+                  ),
+                  decoration: BoxDecoration(
+                    color: bgColor,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    status,
+                    style: TextStyle(
+                      color: textColor,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 12,
                     ),
-                    const SizedBox(width: 8),
-                  ],
+                  ),
                 ),
               ),
             ],

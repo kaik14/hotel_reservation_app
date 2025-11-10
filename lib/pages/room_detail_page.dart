@@ -122,8 +122,7 @@ class _RoomDetailPageState extends State<RoomDetailPage> {
     setState(() {
       if (isCheckIn) {
         checkInDate = picked;
-        if (checkOutDate == null ||
-            !checkOutDate!.isAfter(checkInDate!)) {
+        if (checkOutDate == null || !checkOutDate!.isAfter(checkInDate!)) {
           checkOutDate = checkInDate!.add(const Duration(days: 1));
         }
       } else {
@@ -137,18 +136,21 @@ class _RoomDetailPageState extends State<RoomDetailPage> {
   /// ✅ Confirm Booking
   Future<void> _confirmBooking() async {
     if (checkInDate == null || checkOutDate == null) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text("Please select dates.")));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text("Please select dates.")));
       return;
     }
     if (selectedRoom == null) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text("No rooms available.")));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text("No rooms available.")));
       return;
     }
 
-    final docRef =
-        FirebaseFirestore.instance.collection('rooms').doc(widget.docId);
+    final docRef = FirebaseFirestore.instance
+        .collection('rooms')
+        .doc(widget.docId);
 
     try {
       // ✅ Reserve Room (Transaction)
@@ -160,7 +162,8 @@ class _RoomDetailPageState extends State<RoomDetailPage> {
         final List<dynamic> rooms = List.from(data['rooms'] ?? []);
 
         final idx = rooms.indexWhere(
-            (r) => (r['roomNo'] ?? '').toString() == selectedRoom);
+          (r) => (r['roomNo'] ?? '').toString() == selectedRoom,
+        );
 
         if (idx < 0) throw Exception("Room not found.");
 
@@ -198,18 +201,18 @@ class _RoomDetailPageState extends State<RoomDetailPage> {
             .doc(currentUser.uid)
             .collection('bookings')
             .add({
-          'roomTypeId': widget.docId,
-          'roomTypeTitle': widget.title,
-          'roomNo': selectedRoom,
-          'priceText': widget.price,
-          'description': widget.description,
-          'guests': guests,
-          'checkIn': checkInDate,
-          'checkOut': checkOutDate,
-          'nights': nights,
-          'imageName': widget.imageName,
-          'createdAt': Timestamp.fromDate(DateTime.now()),
-        });
+              'roomTypeId': widget.docId,
+              'roomTypeTitle': widget.title,
+              'roomNo': selectedRoom,
+              'priceText': widget.price,
+              'description': widget.description,
+              'guests': guests,
+              'checkIn': checkInDate,
+              'checkOut': checkOutDate,
+              'nights': nights,
+              'imageName': widget.imageName,
+              'createdAt': Timestamp.fromDate(DateTime.now()),
+            });
       }
 
       // ✅ System Push Message
@@ -228,23 +231,23 @@ class _RoomDetailPageState extends State<RoomDetailPage> {
             .doc(currentUser.uid)
             .collection('messages')
             .add({
-          'title': newMsg.title,
-          'message': newMsg.message,
-          'senderIcon': newMsg.senderIcon,
-          'timestamp': Timestamp.fromDate(newMsg.timestamp),
-        });
+              'title': newMsg.title,
+              'message': newMsg.message,
+              'senderIcon': newMsg.senderIcon,
+              'timestamp': Timestamp.fromDate(newMsg.timestamp),
+            });
       }
 
       if (!mounted) return;
 
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(
-            builder: (_) => BookingSuccessPage(message: newMsg)),
+        MaterialPageRoute(builder: (_) => BookingSuccessPage(message: newMsg)),
       );
     } catch (e) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(e.toString())));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.toString())));
       _filterAvailableRooms();
     }
   }
@@ -275,19 +278,26 @@ class _RoomDetailPageState extends State<RoomDetailPage> {
             ),
             const SizedBox(height: 16),
 
-            Text(widget.title,
-                style: const TextStyle(
-                    fontSize: 20, fontWeight: FontWeight.bold)),
-            Text(widget.price,
-                style: const TextStyle(fontSize: 15, color: Colors.grey)),
+            Text(
+              widget.title,
+              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+            ),
+            Text(
+              widget.price,
+              style: const TextStyle(fontSize: 15, color: Colors.grey),
+            ),
             const SizedBox(height: 10),
 
-            Text(widget.description,
-                style: const TextStyle(fontSize: 15, height: 1.5)),
+            Text(
+              widget.description,
+              style: const TextStyle(fontSize: 15, height: 1.5),
+            ),
             const SizedBox(height: 24),
 
-            const Text("Booking Details",
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            const Text(
+              "Booking Details",
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            ),
             const SizedBox(height: 8),
 
             Container(
@@ -298,18 +308,26 @@ class _RoomDetailPageState extends State<RoomDetailPage> {
               ),
               child: Column(
                 children: [
-                  _buildRow("Check-in", _formatDate(checkInDate),
-                      () => _selectDate(context, true)),
+                  _buildRow(
+                    "Check-in",
+                    _formatDate(checkInDate),
+                    () => _selectDate(context, true),
+                  ),
                   const Divider(),
-                  _buildRow("Check-out", _formatDate(checkOutDate),
-                      () => _selectDate(context, false)),
+                  _buildRow(
+                    "Check-out",
+                    _formatDate(checkOutDate),
+                    () => _selectDate(context, false),
+                  ),
                   const Divider(),
 
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text("Guests",
-                          style: TextStyle(fontWeight: FontWeight.w500)),
+                      const Text(
+                        "Guests",
+                        style: TextStyle(fontWeight: FontWeight.w500),
+                      ),
                       Row(
                         children: [
                           IconButton(
@@ -318,9 +336,10 @@ class _RoomDetailPageState extends State<RoomDetailPage> {
                                 ? () => setState(() => guests--)
                                 : null,
                           ),
-                          Text('$guests',
-                              style:
-                                  const TextStyle(fontWeight: FontWeight.bold)),
+                          Text(
+                            '$guests',
+                            style: const TextStyle(fontWeight: FontWeight.bold),
+                          ),
                           IconButton(
                             icon: const Icon(Icons.add_circle_outline),
                             onPressed: () => setState(() => guests++),
@@ -334,27 +353,32 @@ class _RoomDetailPageState extends State<RoomDetailPage> {
 
                   if (checkInDate != null && checkOutDate != null)
                     DropdownButtonFormField<String>(
-                      value: selectedRoom,
+                      initialValue: selectedRoom,
                       hint: const Text("Select Room"),
                       items: availableRooms
-                          .map((r) => DropdownMenuItem(
-                                value: r,
-                                child: Text("Room $r"),
-                              ))
+                          .map(
+                            (r) => DropdownMenuItem(
+                              value: r,
+                              child: Text("Room $r"),
+                            ),
+                          )
                           .toList(),
-                      onChanged: (v) =>
-                          setState(() => selectedRoom = v),
+                      onChanged: (v) => setState(() => selectedRoom = v),
                     ),
 
                   if (checkInDate == null || checkOutDate == null)
-                    const Text("Please choose dates.",
-                        style: TextStyle(color: Colors.grey)),
+                    const Text(
+                      "Please choose dates.",
+                      style: TextStyle(color: Colors.grey),
+                    ),
 
                   if (checkInDate != null &&
                       checkOutDate != null &&
                       availableRooms.isEmpty)
-                    const Text("No rooms available.",
-                        style: TextStyle(color: Colors.redAccent)),
+                    const Text(
+                      "No rooms available.",
+                      style: TextStyle(color: Colors.redAccent),
+                    ),
                 ],
               ),
             ),
@@ -395,7 +419,7 @@ class _RoomDetailPageState extends State<RoomDetailPage> {
                   ),
                 ),
               ),
-            )
+            ),
           ],
         ),
       ),

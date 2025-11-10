@@ -37,32 +37,34 @@ class _LoginPageState extends State<LoginPage> {
       );
       // 登录成功后，AuthGate 会自动处理页面跳转
       // ✅ 登录成功后检查是否首次登录
-  final user = FirebaseAuth.instance.currentUser;
-  final creationTime = user?.metadata.creationTime;
-  final lastSignInTime = user?.metadata.lastSignInTime;
+      final user = FirebaseAuth.instance.currentUser;
+      final creationTime = user?.metadata.creationTime;
+      final lastSignInTime = user?.metadata.lastSignInTime;
 
-  if (creationTime != null && lastSignInTime != null) {
-    final isFirstLogin = creationTime == lastSignInTime;
-    if (isFirstLogin && mounted) {
-      // 首次登录 → 跳转偏好页
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (context) => const PreferencePage()),
-      );
-    }
-  }
+      if (creationTime != null && lastSignInTime != null) {
+        final isFirstLogin = creationTime == lastSignInTime;
+        if (isFirstLogin && mounted) {
+          // 首次登录 → 跳转偏好页
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (context) => const PreferencePage()),
+          );
+        }
+      }
     } on FirebaseAuthException catch (e) {
       // 处理 Firebase 认证异常
       String message = 'Login failed';
       if (e.code == 'user-not-found' || e.code == 'wrong-password') {
         message = 'Incorrect email or password.';
       }
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(message)));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
     } catch (e) {
       // 处理其他异常
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('An unknown error occurred: $e')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('An unknown error occurred: $e')));
     }
 
     if (mounted) setState(() => _isLoading = false);
@@ -70,8 +72,8 @@ class _LoginPageState extends State<LoginPage> {
 
   // --- 忘记密码逻辑 (Dialog) ---
   Future<void> _showForgotPasswordDialog() async {
-    final TextEditingController _resetEmailController = TextEditingController();
-    
+    final TextEditingController resetEmailController = TextEditingController();
+
     // 显示一个 Alert Dialog
     return showDialog<void>(
       context: context,
@@ -79,7 +81,7 @@ class _LoginPageState extends State<LoginPage> {
         return AlertDialog(
           title: const Text('Reset Password'),
           content: TextField(
-            controller: _resetEmailController,
+            controller: resetEmailController,
             decoration: const InputDecoration(hintText: 'Enter your email'),
             keyboardType: TextInputType.emailAddress,
           ),
@@ -93,14 +95,16 @@ class _LoginPageState extends State<LoginPage> {
             TextButton(
               child: const Text('Send'),
               onPressed: () {
-                final email = _resetEmailController.text.trim();
+                final email = resetEmailController.text.trim();
                 if (email.isNotEmpty && email.contains('@')) {
                   // 在 Dialog 内部调用 AuthService
                   _sendResetEmail(email);
                   Navigator.of(context).pop();
                 } else {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Please enter a valid email.')),
+                    const SnackBar(
+                      content: Text('Please enter a valid email.'),
+                    ),
                   );
                 }
               },
@@ -117,21 +121,24 @@ class _LoginPageState extends State<LoginPage> {
       // 调用 AuthService 中你确认过的方法
       await _authService.sendPasswordResetEmail(email);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Password reset email sent. Check your inbox.')),
+        const SnackBar(
+          content: Text('Password reset email sent. Check your inbox.'),
+        ),
       );
     } on FirebaseAuthException catch (e) {
       String message = 'Error sending email.';
       if (e.code == 'user-not-found') {
         message = 'No user found for that email.';
       }
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(message)));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
     } catch (e) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('An unknown error occurred: $e')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('An unknown error occurred: $e')));
     }
   }
-
 
   @override
   Widget build(BuildContext context) {
@@ -146,11 +153,7 @@ class _LoginPageState extends State<LoginPage> {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 // --- Logo ---
-                Icon(
-                  Icons.hotel,
-                  size: 60,
-                  color: Colors.black87,
-                ),
+                Icon(Icons.hotel, size: 60, color: Colors.black87),
                 Text(
                   'HotelEase',
                   style: TextStyle(
@@ -172,8 +175,10 @@ class _LoginPageState extends State<LoginPage> {
                       borderRadius: BorderRadius.circular(12.0),
                       borderSide: BorderSide.none,
                     ),
-                    contentPadding:
-                        EdgeInsets.symmetric(vertical: 16.0, horizontal: 20.0),
+                    contentPadding: EdgeInsets.symmetric(
+                      vertical: 16.0,
+                      horizontal: 20.0,
+                    ),
                   ),
                   keyboardType: TextInputType.emailAddress,
                   validator: (value) {
@@ -198,8 +203,10 @@ class _LoginPageState extends State<LoginPage> {
                       borderRadius: BorderRadius.circular(12.0),
                       borderSide: BorderSide.none,
                     ),
-                    contentPadding:
-                        EdgeInsets.symmetric(vertical: 16.0, horizontal: 20.0),
+                    contentPadding: EdgeInsets.symmetric(
+                      vertical: 16.0,
+                      horizontal: 20.0,
+                    ),
                   ),
                   obscureText: true,
                   validator: (value) {
@@ -226,7 +233,13 @@ class _LoginPageState extends State<LoginPage> {
                         borderRadius: BorderRadius.circular(12.0),
                       ),
                     ),
-                    child: const Text('Login', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                    child: const Text(
+                      'Login',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
                   ),
                 const SizedBox(height: 20),
 
@@ -251,7 +264,8 @@ class _LoginPageState extends State<LoginPage> {
                     await Navigator.push(
                       context,
                       MaterialPageRoute(
-                          builder: (context) => const RegisterPage()),
+                        builder: (context) => const RegisterPage(),
+                      ),
                     );
                     // 从注册页返回后，重置表单（清除错误提示）
                     if (mounted) {
@@ -260,14 +274,9 @@ class _LoginPageState extends State<LoginPage> {
                   },
                   child: RichText(
                     text: TextSpan(
-                      style: TextStyle(
-                        color: Colors.black54,
-                        fontSize: 14,
-                      ),
+                      style: TextStyle(color: Colors.black54, fontSize: 14),
                       children: const <TextSpan>[
-                        TextSpan(
-                          text: 'New to HotelEase? ',
-                        ),
+                        TextSpan(text: 'New to HotelEase? '),
                         TextSpan(
                           text: 'Register',
                           style: TextStyle(
@@ -287,4 +296,3 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 }
-

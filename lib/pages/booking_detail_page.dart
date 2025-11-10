@@ -1,13 +1,19 @@
-// ✅ 完整版 booking_detail_page.dart （可直接复制）
-// ✅ 支持：Edit 后立即刷新、Cancel 后立即返回、系统推送正常
-
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/services.dart';
+
 import 'package:hotel_reservation_app/data/info_data.dart';
 import 'package:hotel_reservation_app/pages/booking_edit_page.dart';
 import 'package:hotel_reservation_app/app_shell.dart';
+
+// —— 统一配色 —— //
+class _Brand {
+  static const bg = Color.fromARGB(255, 222, 228, 236); // 浅蓝灰背景
+  static const bar = Color(0xFF0F1722); // 顶栏/底栏深色
+  static const accent = Color.fromARGB(255, 49, 59, 83); // 品牌按钮色
+}
 
 class BookingDetailPage extends StatefulWidget {
   final String bookingId;
@@ -26,10 +32,9 @@ class BookingDetailPage extends StatefulWidget {
 class _BookingDetailPageState extends State<BookingDetailPage> {
   bool _isCancelling = false;
 
-  /// ✅ 顶部系统通知
+  // 顶部系统通知
   void _showTopNotification(BuildContext context, InfoMessage message) {
     late OverlayEntry entry;
-
     entry = OverlayEntry(
       builder: (context) => Positioned(
         top: 50,
@@ -38,15 +43,11 @@ class _BookingDetailPageState extends State<BookingDetailPage> {
         child: SlideTransitionNotification(message: message),
       ),
     );
-
     Overlay.of(context).insert(entry);
-
-    Future.delayed(const Duration(seconds: 5), () {
-      entry.remove();
-    });
+    Future.delayed(const Duration(seconds: 5), () => entry.remove());
   }
 
-  /// ✅ 取消预定（立即回滚房间 & 删除用户 booking）
+  // 取消预定（逻辑不变）
   Future<void> _cancelBooking(Map<String, dynamic> data) async {
     final docId = data['roomTypeId'];
     final roomNo = data['roomNo'];
@@ -57,17 +58,27 @@ class _BookingDetailPageState extends State<BookingDetailPage> {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
         title: const Text("Cancel Booking"),
         content: const Text("Are you sure you want to cancel this booking?"),
+        actionsPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
             child: const Text("No"),
           ),
           ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.redAccent,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+            ),
             onPressed: () => Navigator.pop(context, true),
-            child: const Text("Yes, Cancel"),
+            child: const Text(
+              "Yes, Cancel",
+              style: TextStyle(color: Colors.white),
+            ),
           ),
         ],
       ),
@@ -77,25 +88,23 @@ class _BookingDetailPageState extends State<BookingDetailPage> {
     setState(() => _isCancelling = true);
 
     try {
-      final roomDoc =
-          FirebaseFirestore.instance.collection('rooms').doc(docId);
+      final roomDoc = FirebaseFirestore.instance.collection('rooms').doc(docId);
 
-      // ✅ 回滚房型 bookedDates
+      // 回滚房型 bookedDates
       await FirebaseFirestore.instance.runTransaction((tx) async {
         final snap = await tx.get(roomDoc);
         if (!snap.exists) return;
-
         final raw = snap.data() as Map<String, dynamic>;
         final List<dynamic> rooms = List.from(raw['rooms'] ?? []);
-
         final idx = rooms.indexWhere(
-            (r) => (r['roomNo'] ?? '').toString() == roomNo.toString());
+          (r) => (r['roomNo'] ?? '').toString() == roomNo.toString(),
+        );
         if (idx < 0) return;
 
-        final Map<String, dynamic> room =
-            Map<String, dynamic>.from(rooms[idx]);
-        final List<String> booked =
-            List<String>.from(room['bookedDates'] ?? []);
+        final Map<String, dynamic> room = Map<String, dynamic>.from(rooms[idx]);
+        final List<String> booked = List<String>.from(
+          room['bookedDates'] ?? [],
+        );
 
         DateTime d = checkIn;
         while (!d.isAfter(checkOut.subtract(const Duration(days: 1)))) {
@@ -105,11 +114,10 @@ class _BookingDetailPageState extends State<BookingDetailPage> {
 
         room['bookedDates'] = booked;
         rooms[idx] = room;
-
         tx.update(roomDoc, {'rooms': rooms});
       });
 
-      /// ✅ 删除用户 booking
+      // 删除用户 booking
       final user = FirebaseAuth.instance.currentUser;
       if (user != null) {
         await FirebaseFirestore.instance
@@ -120,7 +128,7 @@ class _BookingDetailPageState extends State<BookingDetailPage> {
             .delete();
       }
 
-      /// ✅ 系统推送
+      // 系统推送
       final cancelMsg = InfoMessage(
         title: "Booking Cancelled",
         message:
@@ -130,30 +138,26 @@ class _BookingDetailPageState extends State<BookingDetailPage> {
       );
 
       if (!mounted) return;
-
       _showTopNotification(context, cancelMsg);
 
-      /// ✅ 删除后立即返回 Booking 列表
+      // 返回列表
       Navigator.pop(context);
-
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text("Error: $e")));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text("Error: $e")));
     } finally {
       if (mounted) setState(() => _isCancelling = false);
     }
   }
 
-  // ✅ ✅ ✅ StreamBuilder：实时监听 Booking（解决 Edit 后不刷新）
+  // 实时监听（逻辑不变）
   @override
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
-
     if (user == null) {
-      return const Scaffold(
-        body: Center(child: Text("Not logged in")),
-      );
+      return const Scaffold(body: Center(child: Text("Not logged in")));
     }
 
     return StreamBuilder<DocumentSnapshot>(
@@ -169,21 +173,16 @@ class _BookingDetailPageState extends State<BookingDetailPage> {
             body: Center(child: CircularProgressIndicator()),
           );
         }
-
         if (!snapshot.data!.exists) {
-          return const Scaffold(
-            body: Center(child: Text("Booking removed")),
-          );
+          return const Scaffold(body: Center(child: Text("Booking removed")));
         }
-
         final data = snapshot.data!.data() as Map<String, dynamic>;
-
         return _buildDetailUI(context, data);
       },
     );
   }
 
-  // ✅ 你的原始 UI 全部移到这里（保持不变）
+  // —— UI —— //
   Widget _buildDetailUI(BuildContext context, Map<String, dynamic> data) {
     final price = data['priceText'] ?? "RM -";
     final desc = data['description'] ?? data['roomDesc'] ?? "per night";
@@ -199,7 +198,8 @@ class _BookingDetailPageState extends State<BookingDetailPage> {
     final roomNo = data['roomNo'] ?? '-';
     final title = data['roomTypeTitle'] ?? 'Room';
 
-    final nights = data['nights'] ??
+    final nights =
+        data['nights'] ??
         (checkIn != null && checkOut != null
             ? checkOut.difference(checkIn).inDays
             : 1);
@@ -211,34 +211,84 @@ class _BookingDetailPageState extends State<BookingDetailPage> {
     final today = DateTime(now.year, now.month, now.day);
     final isCheckedIn = checkIn != null && checkIn.isBefore(today);
 
+    final bottomSafe = MediaQuery.of(context).padding.bottom;
+
     return Scaffold(
-      backgroundColor: Colors.grey[100],
+      backgroundColor: _Brand.bg,
+
+      // 顶栏：加“<”返回按钮；无底部分割线
       appBar: AppBar(
-        title: const Text('Booking Details'),
-        backgroundColor: Colors.white,
+        backgroundColor: _Brand.bar,
         elevation: 0,
-        centerTitle: true,
+        centerTitle: false,
+        titleSpacing: 8, // 让返回键与标题更近一些
+        toolbarHeight: 97, // 与你的全局规范一致
+        systemOverlayStyle: const SystemUiOverlayStyle(
+          statusBarColor: _Brand.bar,
+          statusBarIconBrightness: Brightness.light,
+          statusBarBrightness: Brightness.dark,
+        ),
+        leadingWidth: 48,
+        leading: IconButton(
+          icon: const Icon(Icons.chevron_left, color: Colors.white, size: 30),
+          onPressed: () => Navigator.maybePop(context),
+          tooltip: 'Back',
+        ),
+        title: const Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Booking Details',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 24,
+                fontWeight: FontWeight.w800,
+                letterSpacing: -0.2,
+              ),
+            ),
+            SizedBox(height: 4),
+            Text(
+              'Review and manage your reservation.',
+              style: TextStyle(
+                color: Color(0x99FFFFFF),
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
       ),
+
+      // ✅ 底部栏：无图标无功能版“AppBar”——同色、同高度、上圆角
+      bottomNavigationBar: Container(
+        height: 75 + bottomSafe,
+        decoration: const BoxDecoration(
+          color: _Brand.bar, // ← 保留纯色
+          // borderRadius: BorderRadius.vertical(top: Radius.circular(24)), // ← 删掉这行
+        ),
+      ),
+
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Container(
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(16),
-            boxShadow: [
+            boxShadow: const [
               BoxShadow(
-                color: Colors.black.withOpacity(0.05),
-                blurRadius: 6,
-                offset: const Offset(0, 2),
+                color: Color(0x14000000),
+                blurRadius: 16,
+                offset: Offset(0, 8),
               ),
             ],
           ),
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.start, // 左对齐
             children: [
               ClipRRect(
-                borderRadius:
-                    const BorderRadius.vertical(top: Radius.circular(16)),
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(16),
+                ),
                 child: Image.asset(
                   imagePath,
                   height: 220,
@@ -247,106 +297,140 @@ class _BookingDetailPageState extends State<BookingDetailPage> {
                 ),
               ),
 
-              /// ✅ ========== 内容（你的 UI 原样保留）==========
+              // 内容
               Padding(
                 padding: const EdgeInsets.all(16),
                 child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                  crossAxisAlignment: CrossAxisAlignment.start, // 左对齐
                   children: [
-                    Text(title,
-                        style: const TextStyle(
-                            fontSize: 20, fontWeight: FontWeight.bold)),
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
                     const SizedBox(height: 4),
-
-                    Text(price,
-                        style:
-                            const TextStyle(fontSize: 15, color: Colors.grey)),
+                    Text(
+                      price,
+                      style: const TextStyle(fontSize: 15, color: Colors.grey),
+                    ),
                     const SizedBox(height: 10),
 
                     if (desc.isNotEmpty)
-                      Text(desc,
-                          style: const TextStyle(fontSize: 15, height: 1.5)),
+                      Text(
+                        desc,
+                        style: const TextStyle(fontSize: 15, height: 1.5),
+                      ),
                     const SizedBox(height: 14),
 
                     _infoRow("Room No", roomNo),
                     _infoRow("Guests", "$guests"),
-                    _infoRow("Check-in",
-                        checkIn != null ? dateFmt.format(checkIn) : "-"),
-                    _infoRow("Check-out",
-                        checkOut != null ? dateFmt.format(checkOut) : "-"),
+                    _infoRow(
+                      "Check-in",
+                      checkIn != null ? dateFmt.format(checkIn) : "-",
+                    ),
+                    _infoRow(
+                      "Check-out",
+                      checkOut != null ? dateFmt.format(checkOut) : "-",
+                    ),
                     _infoRow("Nights", "$nights"),
                     _infoRow(
-                        "Created",
-                        createdAt != null
-                            ? createdFmt.format(createdAt)
-                            : "-"),
+                      "Created",
+                      createdAt != null ? createdFmt.format(createdAt) : "-",
+                    ),
 
-                    const SizedBox(height: 24),
+                    const SizedBox(height: 20),
 
-                    Center(
-                      child: isCheckedIn
-                          ? const Text(
-                              "Checked-in bookings cannot be modified or cancelled.",
-                              style: TextStyle(color: Colors.grey),
-                            )
-                          : Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                ElevatedButton.icon(
-                                  icon: const Icon(
-                                      Icons.edit_calendar_outlined,
-                                      color: Colors.white),
-                                  label: const Text("Edit Booking",
-                                      style: TextStyle(color: Colors.white)),
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor:
-                                        const Color.fromARGB(255, 159, 207, 246),
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 22, vertical: 12),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(14),
+                    // 操作区：两个等宽按钮、同色同尺寸
+                    if (!isCheckedIn)
+                      Row(
+                        children: [
+                          Expanded(
+                            child: ElevatedButton.icon(
+                              icon: const Icon(
+                                Icons.edit_calendar_outlined,
+                                color: Colors.white,
+                              ),
+                              label: const Text(
+                                "Edit Booking",
+                                style: TextStyle(color: Colors.white),
+                              ),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: _Brand.accent,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 18,
+                                  vertical: 12,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(14),
+                                ),
+                                shadowColor: _Brand.accent.withOpacity(.25),
+                                elevation: 4,
+                                minimumSize: const Size(0, 48),
+                              ),
+                              onPressed: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => BookingEditPage(
+                                      bookingId: widget.bookingId,
+                                      data: data,
                                     ),
                                   ),
-                                  onPressed: () {
-                                    Navigator.push(
-                                      context,
-                                      MaterialPageRoute(
-                                        builder: (_) => BookingEditPage(
-                                          bookingId: widget.bookingId,
-                                          data: data, // ✅ 最新数据
-                                        ),
-                                      ),
-                                    );
-                                  },
-                                ),
-
-                                const SizedBox(width: 12),
-
-                                _isCancelling
-                                    ? const CircularProgressIndicator(
-                                        color: Colors.redAccent)
-                                    : ElevatedButton.icon(
-                                        icon: const Icon(
-                                            Icons.cancel_outlined,
-                                            color: Colors.white),
-                                        label: const Text("Cancel Booking",
-                                            style:
-                                                TextStyle(color: Colors.white)),
-                                        style: ElevatedButton.styleFrom(
-                                          backgroundColor:
-                                              const Color.fromARGB(255, 229, 179, 179),
-                                          padding: const EdgeInsets.symmetric(
-                                              horizontal: 22, vertical: 12),
-                                          shape: RoundedRectangleBorder(
-                                            borderRadius:
-                                                BorderRadius.circular(14),
-                                          ),
-                                        ),
-                                        onPressed: () => _cancelBooking(data),
-                                      ),
-                              ],
+                                );
+                              },
                             ),
-                    ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: _isCancelling
+                                ? const SizedBox(
+                                    height: 48,
+                                    child: Center(
+                                      child: CircularProgressIndicator(
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                  )
+                                : ElevatedButton.icon(
+                                    icon: const Icon(
+                                      Icons.cancel_outlined,
+                                      color: Colors.white,
+                                    ),
+                                    label: const Text(
+                                      "Cancel Booking",
+                                      style: TextStyle(color: Colors.white),
+                                    ),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: _Brand.accent,
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 18,
+                                        vertical: 12,
+                                      ),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(14),
+                                      ),
+                                      shadowColor: _Brand.accent.withOpacity(
+                                        .25,
+                                      ),
+                                      elevation: 4,
+                                      minimumSize: const Size(0, 48),
+                                    ),
+                                    onPressed: () => _cancelBooking(data),
+                                  ),
+                          ),
+                        ],
+                      ),
+
+                    if (isCheckedIn)
+                      const Padding(
+                        padding: EdgeInsets.only(top: 6),
+                        child: Text(
+                          "Checked-in bookings cannot be modified or cancelled.",
+                          style: TextStyle(color: Colors.grey),
+                        ),
+                      ),
                   ],
                 ),
               ),
@@ -363,17 +447,21 @@ class _BookingDetailPageState extends State<BookingDetailPage> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label,
-              style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 14)),
-          Text(value,
-              style: const TextStyle(color: Colors.black87, fontSize: 14)),
+          Text(
+            label,
+            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+          ),
+          Text(
+            value,
+            style: const TextStyle(color: Colors.black87, fontSize: 14),
+          ),
         ],
       ),
     );
   }
 }
 
-/// ✅ 顶部蓝色推送（点击跳 Info Page）
+// 顶部通知（保持不变）
 class SlideTransitionNotification extends StatefulWidget {
   final InfoMessage message;
   const SlideTransitionNotification({super.key, required this.message});
@@ -392,19 +480,14 @@ class _SlideTransitionNotificationState
   @override
   void initState() {
     super.initState();
-
     _controller = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 450),
     );
-
     _offsetAnimation = Tween<Offset>(
       begin: const Offset(0, -1.5),
       end: const Offset(0, 0),
-    ).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeOutBack),
-    );
-
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOutBack));
     _controller.forward();
   }
 
@@ -416,26 +499,24 @@ class _SlideTransitionNotificationState
         onTap: () {
           Navigator.pushAndRemoveUntil(
             context,
-            MaterialPageRoute(
-              builder: (_) => const AppShell(initialIndex: 3),
-            ),
+            MaterialPageRoute(builder: (_) => const AppShell(initialIndex: 3)),
             (route) => false,
           );
         },
         child: Material(
-          color: Colors.blueAccent,
+          color: _Brand.accent,
           elevation: 6,
           borderRadius: BorderRadius.circular(12),
           child: Container(
             padding: const EdgeInsets.all(14),
             child: Row(
-              children: [
-                const Icon(Icons.notifications_active, color: Colors.white),
-                const SizedBox(width: 10),
+              children: const [
+                Icon(Icons.notifications_active, color: Colors.white),
+                SizedBox(width: 10),
                 Expanded(
                   child: Text(
-                    "New Message: ${widget.message.title}",
-                    style: const TextStyle(color: Colors.white, fontSize: 15),
+                    "New Message",
+                    style: TextStyle(color: Colors.white, fontSize: 15),
                   ),
                 ),
               ],
