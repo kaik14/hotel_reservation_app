@@ -14,30 +14,56 @@ class _PreferencePageState extends State<PreferencePage> {
   String? floor;
   String? view;
   String? environment;
-  bool familyFriendly = false;
-  bool accessibility = false;
+
+  // New: room location
+  String? roomLocation;
+
+  // Replaced two booleans with a dropdown-backed value for Family Needs
+  String? familyNeeds;
+
+  // Renamed for clarity in UI; keeps same Firestore key 'accessibility'
+  bool wheelchairAccessible = false;
+
+  // New: pet friendly
+  bool petFriendly = false;
 
   bool loading = true;
 
   final List<String> floorOptions = [
     'No Preference',
     'Low Floor',
-    'Middle Floor',
     'High Floor',
   ];
 
+  // Updated view options
   final List<String> viewOptions = [
     'No Preference',
-    'City View',
+    'South-facing',
+    'East-facing',
     'Sea View',
-    'Garden View',
   ];
 
+  // Updated environment options
   final List<String> environmentOptions = [
     'No Preference',
-    'Quiet',
-    'Lively',
-    'Natural',
+    'Quiet Room',
+    'Soundproofed Room',
+  ];
+
+  // New room location options
+  final List<String> roomLocationOptions = [
+    'No Preference',
+    'Near Elevator',
+    'Far from Elevator',
+    'Near Exit',
+  ];
+
+  // New family needs options (dropdown)
+  final List<String> familyNeedsOptions = [
+    'No Preference',
+    'Family-friendly',
+    'Extra Bed',
+    'Family-friendly + Extra Bed',
   ];
 
   @override
@@ -64,8 +90,28 @@ class _PreferencePageState extends State<PreferencePage> {
       environment = data['preferredEnvironment'] == ''
           ? null
           : data['preferredEnvironment'];
-      familyFriendly = data['familyFriendly'] ?? false;
-      accessibility = data['accessibility'] ?? false;
+
+      // New fields loaded from Firestore (keep backwards compatible defaults)
+      roomLocation =
+          (data['roomLocation'] ?? '') == '' ? null : data['roomLocation'];
+
+      // Backwards compatibility: derive familyNeeds from legacy booleans
+      final bool legacyFamily = data['familyFriendly'] ?? false;
+      final bool legacyExtraBed = data['extraBed'] ?? false;
+      if (legacyFamily && legacyExtraBed) {
+        familyNeeds = 'Family-friendly + Extra Bed';
+      } else if (legacyFamily) {
+        familyNeeds = 'Family-friendly';
+      } else if (legacyExtraBed) {
+        familyNeeds = 'Extra Bed';
+      } else {
+        // If a new string value exists in data (in case saved previously)
+        final stored = (data['familyNeeds'] ?? '') as String;
+        familyNeeds = stored == '' ? null : stored;
+      }
+
+      wheelchairAccessible = data['accessibility'] ?? false;
+      petFriendly = data['petFriendly'] ?? false;
     }
 
     setState(() => loading = false);
@@ -75,19 +121,31 @@ class _PreferencePageState extends State<PreferencePage> {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return;
 
+    // derive booleans for compatibility
+    final bool saveFamily = (familyNeeds ?? '').contains('Family-friendly');
+    final bool saveExtraBed = (familyNeeds ?? '').contains('Extra Bed');
+
     await FirebaseFirestore.instance
         .collection('users')
         .doc(uid)
         .collection('preferences')
         .doc('userPrefs')
         .set({
-          'preferredFloor': floor ?? '',
-          'preferredView': view ?? '',
-          'preferredEnvironment': environment ?? '',
-          'familyFriendly': familyFriendly,
-          'accessibility': accessibility,
-          'updatedAt': Timestamp.now(),
-        });
+      'preferredFloor': floor ?? '',
+      'preferredView': view ?? '',
+      'preferredEnvironment': environment ?? '',
+      // New saved fields
+      'roomLocation': roomLocation ?? '',
+      // Save both legacy booleans for compatibility
+      'familyFriendly': saveFamily,
+      'extraBed': saveExtraBed,
+      // Also store familyNeeds string (optional)
+      'familyNeeds': familyNeeds ?? '',
+      // Keep firestore key 'accessibility' for compatibility
+      'accessibility': wheelchairAccessible,
+      'petFriendly': petFriendly,
+      'updatedAt': Timestamp.now(),
+    });
 
     // ✅ 保存后跳转回 Search（Tab 0）
     Navigator.pushAndRemoveUntil(
@@ -128,6 +186,9 @@ class _PreferencePageState extends State<PreferencePage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // NEW: top spacer to push page content downward; adjust height as needed
+            const SizedBox(height: 100),
+
             _title("Preferred Floor"),
             _box(
               _dropdown(
@@ -139,7 +200,7 @@ class _PreferencePageState extends State<PreferencePage> {
             ),
             const SizedBox(height: 20),
 
-            _title("Preferred View"),
+            _title("Preferred View / Direction"),
             _box(
               _dropdown(
                 selectedValue: view,
@@ -162,20 +223,64 @@ class _PreferencePageState extends State<PreferencePage> {
             ),
             const SizedBox(height: 20),
 
-            _title("Family Friendly"),
+            // New: Room Location
+            _title("Room Location"),
             _box(
-              Switch(
-                value: familyFriendly,
-                onChanged: (v) => setState(() => familyFriendly = v),
+              _dropdown(
+                selectedValue: roomLocation,
+                options: roomLocationOptions,
+                onSelected: (v) => setState(
+                  () => roomLocation = v == "No Preference" ? null : v,
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+
+            // Family Needs as dropdown (replaces previous switches)
+            _title("Family Needs"),
+            _box(
+              _dropdown(
+                selectedValue: familyNeeds,
+                options: familyNeedsOptions,
+                onSelected: (v) => setState(
+                  () => familyNeeds = v == "No Preference" ? null : v,
+                ),
               ),
             ),
             const SizedBox(height: 20),
 
             _title("Accessibility Needed"),
             _box(
-              Switch(
-                value: accessibility,
-                onChanged: (v) => setState(() => accessibility = v),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text("Wheelchair-accessible"),
+                  Switch(
+                    value: wheelchairAccessible,
+                    onChanged: (v) => setState(() => wheelchairAccessible = v),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 20),
+
+            _title("Other Special Requests"),
+            _box(
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // only keep Pet-friendly switch, remove text input
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text("Pet-friendly"),
+                      Switch(
+                        value: petFriendly,
+                        onChanged: (v) => setState(() => petFriendly = v),
+                      ),
+                    ],
+                  ),
+                ],
               ),
             ),
             const SizedBox(height: 40),
@@ -201,9 +306,9 @@ class _PreferencePageState extends State<PreferencePage> {
   }
 
   Widget _title(String s) => Text(
-    s,
-    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
-  );
+        s,
+        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+      );
 
   Widget _box(Widget child) {
     return Container(
@@ -221,8 +326,13 @@ class _PreferencePageState extends State<PreferencePage> {
     required List<String> options,
     required ValueChanged<String?> onSelected,
   }) {
+    // Ensure the initial value exists in the options to avoid Dropdown assertion
+    final String safeInitial = (selectedValue != null && options.contains(selectedValue))
+        ? selectedValue!
+        : "No Preference";
+
     return DropdownButtonFormField<String>(
-      initialValue: selectedValue ?? "No Preference",
+      initialValue: safeInitial,
       decoration: const InputDecoration(border: InputBorder.none),
       items: options
           .map((o) => DropdownMenuItem(value: o, child: Text(o)))
