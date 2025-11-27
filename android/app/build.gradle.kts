@@ -27,10 +27,11 @@ android {
         applicationId = "com.example.hotel_reservation_app"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = flutter.minSdkVersion
+        minSdk = flutter.minSdkVersion // ✅ 为 Stripe 提高最低版本
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        multiDexEnabled = true // ✅ 启用 MultiDex
     }
 
     buildTypes {
