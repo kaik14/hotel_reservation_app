@@ -233,32 +233,55 @@ class _BookingPageState extends State<BookingPage> {
                                 ),
                               ),
                             if (status == "Checked In")
-                              GestureDetector(
-                                onTap: () {
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (_) => RoomDetailPage(
-                                        docId: roomTypeId,
-                                        title: title,
-                                        imageUrl: image,
-                                        price: price,
-                                        description: data['description'] ?? '',
-                                        imageName: imageName,
-                                      ),
-                                    ),
-                                  );
-                                },
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                                  decoration: BoxDecoration(
-                                    color: _Brand.accent,
-                                    borderRadius: BorderRadius.circular(10),
-                                    boxShadow: [BoxShadow(color: _Brand.accent.withOpacity(0.22), blurRadius: 10, offset: const Offset(0, 6))],
-                                  ),
-                                  child: const Text("Rebook", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
-                                ),
-                              ),
+  GestureDetector(
+    onTap: () {
+      // 从预订记录里取楼层，如果没有就默认 8F
+      final String floorId = (data['floorId'] ?? '8F').toString();
+
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => RoomDetailPage(
+            docId: roomTypeId,
+            title: title,
+            imageUrl: image,
+            price: price,
+            description: data['description'] ?? '',
+            imageName: imageName,
+            // 👇 必须补上这一行
+            floorId: floorId,
+            // 这里初始 check-in / out 随你要不要传，留空也可以：
+            // initialCheckIn: checkIn,
+            // initialCheckOut: checkOut,
+          ),
+        ),
+      );
+    },
+    child: Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: _Brand.accent,
+        borderRadius: BorderRadius.circular(10),
+        boxShadow: [
+          BoxShadow(
+            color: _Brand.accent.withOpacity(0.22),
+            blurRadius: 10,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: const Text(
+        "Rebook",
+        style: TextStyle(
+          color: Colors.white,
+          fontWeight: FontWeight.bold,
+          fontSize: 12,
+        ),
+      ),
+                          ),
+                          ),
+
+                              
                           ],
                         ),
                       ),

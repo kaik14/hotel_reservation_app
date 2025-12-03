@@ -4,7 +4,9 @@ import 'package:hotel_reservation_app/pages/payment_screen.dart';
 import 'package:intl/intl.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
-// ✅✅✅ Step 1: Restoring the complete widget definition ✅✅✅
+// 跳转到地图选房页面
+import 'room_map_page.dart';
+
 class RoomDetailPage extends StatefulWidget {
   final String docId;
   final String title;
@@ -16,6 +18,9 @@ class RoomDetailPage extends StatefulWidget {
   final DateTime? initialCheckIn;
   final DateTime? initialCheckOut;
 
+  // 👇 新增：楼层 ID，比如 '8F' 或 '9F'
+  final String floorId;
+
   const RoomDetailPage({
     super.key,
     required this.docId,
@@ -26,6 +31,7 @@ class RoomDetailPage extends StatefulWidget {
     required this.imageName,
     this.initialCheckIn,
     this.initialCheckOut,
+    required this.floorId, // 👈 记得 required
   });
 
   @override
@@ -33,11 +39,11 @@ class RoomDetailPage extends StatefulWidget {
 }
 
 class _RoomDetailPageState extends State<RoomDetailPage> {
-  // ✅✅✅ Step 2: Restoring all the state variables ✅✅✅
   DateTime? checkInDate;
   DateTime? checkOutDate;
   int guests = 1;
 
+  // Firestore 过滤出来的可用房间号
   List<String> availableRooms = [];
   String? selectedRoom;
 
@@ -63,15 +69,22 @@ class _RoomDetailPageState extends State<RoomDetailPage> {
       });
       return;
     }
-    final snap = await FirebaseFirestore.instance.collection('rooms').doc(widget.docId).get();
+
+    final snap = await FirebaseFirestore.instance
+        .collection('rooms')
+        .doc(widget.docId)
+        .get();
     if (!snap.exists) return;
+
     final data = snap.data();
     final List<dynamic> rooms = data?['rooms'] ?? [];
     final List<String> free = [];
+
     for (final r in rooms) {
       final String roomNo = (r['roomNo'] ?? '').toString();
       final List<dynamic> bookedRaw = List.from(r['bookedDates'] ?? []);
       final Set<String> booked = bookedRaw.map((e) => e.toString()).toSet();
+
       bool overlap = false;
       DateTime d = checkInDate!;
       while (!d.isAfter(checkOutDate!.subtract(const Duration(days: 1)))) {
@@ -81,11 +94,14 @@ class _RoomDetailPageState extends State<RoomDetailPage> {
         }
         d = d.add(const Duration(days: 1));
       }
+
       if (!overlap) free.add(roomNo);
     }
+
     setState(() {
       availableRooms = free;
-      selectedRoom = free.isNotEmpty ? free.first : null;
+      // 不自动选第一间，等用户去地图选
+      selectedRoom = null;
     });
   }
 
@@ -93,10 +109,12 @@ class _RoomDetailPageState extends State<RoomDetailPage> {
     final today = DateTime.now();
     DateTime initial = today;
     DateTime first = today;
+
     if (!isCheckIn && checkInDate != null) {
       first = checkInDate!.add(const Duration(days: 1));
       initial = first;
     }
+
     final picked = await showDatePicker(
       context: context,
       initialDate: initial,
@@ -104,6 +122,7 @@ class _RoomDetailPageState extends State<RoomDetailPage> {
       lastDate: DateTime(2026, 12, 31),
     );
     if (picked == null) return;
+
     setState(() {
       if (isCheckIn) {
         checkInDate = picked;
@@ -114,17 +133,54 @@ class _RoomDetailPageState extends State<RoomDetailPage> {
         checkOutDate = picked;
       }
     });
+
     await _filterAvailableRooms();
   }
 
-  /// ✅✅✅ Step 3: Using the correct business logic ✅✅✅
+  Future<void> _openRoomMap() async {
+    if (checkInDate == null || checkOutDate == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Please select dates first.")),
+      );
+      return;
+    }
+    if (availableRooms.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("No rooms available for the selected dates.")),
+      );
+      return;
+    }
+
+    // 跳转到地图选房页面，等待返回选中的 roomNo
+    final result = await Navigator.push<String>(
+      context,
+      MaterialPageRoute(
+        builder: (context) => RoomMapPage(
+          floorId: widget.floorId,          // 👈 使用传进来的楼层
+          availableRooms: availableRooms,
+          initialSelectedRoom: selectedRoom,
+        ),
+      ),
+    );
+
+    if (result != null) {
+      setState(() {
+        selectedRoom = result;
+      });
+    }
+  }
+
   Future<void> _confirmBooking() async {
     if (checkInDate == null || checkOutDate == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Please select dates.")));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Please select dates.")),
+      );
       return;
     }
     if (selectedRoom == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("No rooms available.")));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Please select a room on the map.")),
+      );
       return;
     }
 
@@ -147,6 +203,7 @@ class _RoomDetailPageState extends State<RoomDetailPage> {
         'nights': nights,
         'imageName': widget.imageName,
         'totalAmount': totalAmount,
+        'floorId': widget.floorId, // 👈 想存楼层也可以一起存
       };
 
       if (!mounted) return;
@@ -160,13 +217,12 @@ class _RoomDetailPageState extends State<RoomDetailPage> {
           ),
         ),
       );
-
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(e.toString())));
     }
   }
 
-  // ✅✅✅ Step 4: Restoring the complete UI Build method ✅✅✅
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -192,12 +248,25 @@ class _RoomDetailPageState extends State<RoomDetailPage> {
               ),
             ),
             const SizedBox(height: 16),
-            Text(widget.title, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-            Text(widget.price, style: const TextStyle(fontSize: 15, color: Colors.grey)),
+            Text(
+              widget.title,
+              style: const TextStyle(
+                  fontSize: 20, fontWeight: FontWeight.bold),
+            ),
+            Text(
+              widget.price,
+              style: const TextStyle(fontSize: 15, color: Colors.grey),
+            ),
             const SizedBox(height: 10),
-            Text(widget.description, style: const TextStyle(fontSize: 15, height: 1.5)),
+            Text(
+              widget.description,
+              style: const TextStyle(fontSize: 15, height: 1.5),
+            ),
             const SizedBox(height: 24),
-            const Text("Booking Details", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            const Text(
+              "Booking Details",
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            ),
             const SizedBox(height: 8),
             Container(
               padding: const EdgeInsets.all(14),
@@ -207,35 +276,91 @@ class _RoomDetailPageState extends State<RoomDetailPage> {
               ),
               child: Column(
                 children: [
-                  _buildRow("Check-in", _formatDate(checkInDate), () => _selectDate(context, true)),
+                  _buildRow(
+                    "Check-in",
+                    _formatDate(checkInDate),
+                    () => _selectDate(context, true),
+                  ),
                   const Divider(),
-                  _buildRow("Check-out", _formatDate(checkOutDate), () => _selectDate(context, false)),
+                  _buildRow(
+                    "Check-out",
+                    _formatDate(checkOutDate),
+                    () => _selectDate(context, false),
+                  ),
                   const Divider(),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text("Guests", style: TextStyle(fontWeight: FontWeight.w500)),
+                      const Text(
+                        "Guests",
+                        style: TextStyle(fontWeight: FontWeight.w500),
+                      ),
                       Row(
                         children: [
-                          IconButton(icon: const Icon(Icons.remove_circle_outline), onPressed: guests > 1 ? () => setState(() => guests--) : null),
-                          Text('$guests', style: const TextStyle(fontWeight: FontWeight.bold)),
-                          IconButton(icon: const Icon(Icons.add_circle_outline), onPressed: () => setState(() => guests++)),
+                          IconButton(
+                            icon: const Icon(Icons.remove_circle_outline),
+                            onPressed: guests > 1
+                                ? () => setState(() => guests--)
+                                : null,
+                          ),
+                          Text(
+                            '$guests',
+                            style: const TextStyle(
+                                fontWeight: FontWeight.bold),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.add_circle_outline),
+                            onPressed: () =>
+                                setState(() => guests++),
+                          ),
                         ],
                       ),
                     ],
                   ),
                   const Divider(),
-                  if (checkInDate != null && checkOutDate != null)
-                    DropdownButtonFormField<String>(
-                      initialValue: selectedRoom,
-                      hint: const Text("Select Room"),
-                      items: availableRooms.map((r) => DropdownMenuItem(value: r, child: Text("Room $r"))).toList(),
-                      onChanged: (v) => setState(() => selectedRoom = v),
+
+                  // ------- 选择房间（跳转地图页面） -------
+                  InkWell(
+                    onTap: _openRoomMap,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      child: Row(
+                        mainAxisAlignment:
+                            MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text(
+                            "Room",
+                            style: TextStyle(fontWeight: FontWeight.w600),
+                          ),
+                          Row(
+                            children: [
+                              Text(
+                                selectedRoom == null
+                                    ? "Select on map"
+                                    : "Room $selectedRoom",
+                                style: TextStyle(
+                                  color: selectedRoom == null
+                                      ? Colors.grey
+                                      : Colors.black,
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                              const Icon(Icons.chevron_right),
+                            ],
+                          ),
+                        ],
+                      ),
                     ),
+                  ),
+
                   if (checkInDate == null || checkOutDate == null)
-                    const Text("Please choose dates.", style: TextStyle(color: Colors.grey)),
-                  if (checkInDate != null && checkOutDate != null && availableRooms.isEmpty)
-                    const Text("No rooms available.", style: TextStyle(color: Colors.redAccent)),
+                    const Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        "Please select dates, then choose room on map.",
+                        style: TextStyle(fontSize: 12, color: Colors.grey),
+                      ),
+                    ),
                 ],
               ),
             ),
@@ -244,17 +369,37 @@ class _RoomDetailPageState extends State<RoomDetailPage> {
               onTap: _confirmBooking,
               child: Container(
                 width: double.infinity,
-                padding: const EdgeInsets.symmetric(vertical: 18),
+                padding:
+                    const EdgeInsets.symmetric(vertical: 18),
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(22),
                   gradient: const LinearGradient(
-                    colors: [Color.fromARGB(255, 0, 0, 0), Color.fromARGB(255, 0, 0, 0)],
+                    colors: [
+                      Color.fromARGB(255, 0, 0, 0),
+                      Color.fromARGB(255, 0, 0, 0),
+                    ],
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                   ),
-                  boxShadow: [BoxShadow(color: const Color(0xFFB9A9FF).withOpacity(0.4), blurRadius: 16, offset: const Offset(0, 6))],
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFFB9A9FF)
+                          .withOpacity(0.4),
+                      blurRadius: 16,
+                      offset: const Offset(0, 6),
+                    ),
+                  ],
                 ),
-                child: const Center(child: Text("Confirm Booking", style: TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.bold))),
+                child: const Center(
+                  child: Text(
+                    "Confirm Booking",
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 17,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
               ),
             ),
           ],
@@ -263,21 +408,33 @@ class _RoomDetailPageState extends State<RoomDetailPage> {
     );
   }
 
-  Widget _buildRow(String label, String value, VoidCallback onTap) {
+  Widget _buildRow(
+      String label, String value, VoidCallback onTap) {
     return InkWell(
       onTap: onTap,
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 10),
+        padding:
+            const EdgeInsets.symmetric(vertical: 10),
         child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          mainAxisAlignment:
+              MainAxisAlignment.spaceBetween,
           children: [
-            Text(label, style: const TextStyle(fontWeight: FontWeight.w600)),
-            Text(value, style: const TextStyle(color: Colors.black87)),
+            Text(
+              label,
+              style: const TextStyle(
+                  fontWeight: FontWeight.w600),
+            ),
+            Text(
+              value,
+              style: const TextStyle(
+                  color: Colors.black87),
+            ),
           ],
         ),
       ),
     );
   }
 
-  String _formatDate(DateTime? d) => d == null ? "Select date" : _uiFmt.format(d);
+  String _formatDate(DateTime? d) =>
+      d == null ? "Select date" : _uiFmt.format(d);
 }

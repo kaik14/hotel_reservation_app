@@ -34,3 +34,4 @@ flutter:
   assets:
      - assets/rooms/
      - assets/icons/hotel_icon.png
+     - assets/seacity.jpg

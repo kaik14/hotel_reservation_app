@@ -170,24 +170,29 @@ class _SearchPageState extends State<SearchPage> {
     }
   }
 
-  /// ✅ 打开房型详情
-  void _openRoom(DocumentSnapshot room, Map<String, dynamic> data) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => RoomDetailPage(
-          docId: room.id,
-          title: data['titleEN'],
-          imageUrl: 'assets/rooms/${data['imageName']}',
-          price: "RM${data['price']} per night",
-          description: data['description'] ?? '',
-          imageName: data['imageName'],
-          initialCheckIn: _checkInDate,
-          initialCheckOut: _checkOutDate,
-        ),
+  /// ✅ 打开房型详情（带楼层 floorId）
+void _openRoom(DocumentSnapshot room, Map<String, dynamic> data) {
+  // 从 Firestore 取楼层，如果没有就默认给 8F
+  final String floorId = (data['floorLevel'] ?? '8F').toString();
+
+  Navigator.push(
+    context,
+    MaterialPageRoute(
+      builder: (_) => RoomDetailPage(
+        docId: room.id,
+        title: data['titleEN'],
+        imageUrl: 'assets/rooms/${data['imageName']}',
+        price: "RM${data['price']} per night",
+        description: data['description'] ?? '',
+        imageName: data['imageName'],
+        initialCheckIn: _checkInDate,
+        initialCheckOut: _checkOutDate,
+        floorId: floorId, // 👈 关键：把楼层传进去
       ),
-    );
-  }
+    ),
+  );
+}
+
 
   /// ✅ 搜索结果（加入日期过滤）
   Widget _buildSearchResults() {
