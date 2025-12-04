@@ -1,76 +1,7 @@
-import 'dart:async';
-import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:hotel_reservation_app/auth_gate.dart';
+import 'package:video_player/video_player.dart';
 import 'package:hotel_reservation_app/data/hotel_logo_painter.dart';
-
-// ✅ 可爱风“星芒插画”
-class StarBurstPainter extends CustomPainter {
-  final Color color;
-  final int spikes;
-  final double innerRatio;
-
-  StarBurstPainter(
-    this.color, {
-    this.spikes = 12,
-    this.innerRatio = 0.45,
-  });
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = color
-      ..style = PaintingStyle.fill;
-
-    final path = Path();
-    final cx = size.width / 2;
-    final cy = size.height / 2;
-    final outerR = size.width / 2;
-    final innerR = outerR * innerRatio;
-    final totalPoints = spikes * 2;
-
-    for (int i = 0; i < totalPoints; i++) {
-      final isOuter = i.isEven;
-      final r = isOuter ? outerR : innerR;
-      final theta = (i * (math.pi * 2) / totalPoints) - math.pi / 2;
-
-      final x = cx + r * math.cos(theta);
-      final y = cy + r * math.sin(theta);
-
-      if (i == 0) {
-        path.moveTo(x, y);
-      } else {
-        path.lineTo(x, y);
-      }
-    }
-    path.close();
-
-    canvas.drawPath(path, paint);
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-}
-
-// ✅ 小组件封装
-class StarBurst extends StatelessWidget {
-  final double size;
-  final Color color;
-
-  const StarBurst({
-    super.key,
-    required this.size,
-    required this.color,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return CustomPaint(
-      size: Size(size, size),
-      painter: StarBurstPainter(color.withOpacity(0.35)),
-    );
-  }
-}
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -79,152 +10,163 @@ class SplashScreen extends StatefulWidget {
   State<SplashScreen> createState() => _SplashScreenState();
 }
 
-class _SplashScreenState extends State<SplashScreen>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
+class _SplashScreenState extends State<SplashScreen> {
+  late VideoPlayerController _videoController;
+  bool _isReady = false;
+
+  // ✅ Logo 动画进度（0~1，0 不显示，1 完全画完）
+  double _logoProgress = 0.0;
+
+  // ✅ 避免重复跳转 & 重复 delay
+  bool _hasScheduledNext = false;
 
   @override
   void initState() {
     super.initState();
 
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 2),
-    )..forward();
+    _videoController = VideoPlayerController.asset(
+      'assets/videos/splash.mp4',
+    )
+      ..setLooping(false)
+      ..setVolume(0.0);
 
-    Timer(const Duration(seconds: 3), () {
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => const AuthGate()),
-      );
+    _videoController.initialize().then((_) {
+      if (!mounted) return;
+      setState(() {
+        _isReady = true;
+      });
+
+      _videoController.play();
+      _videoController.addListener(_onVideoUpdate);
     });
+  }
+
+  void _onVideoUpdate() {
+    final value = _videoController.value;
+    if (!value.isInitialized) return;
+
+    final duration = value.duration;
+    final position = value.position;
+
+    // ✅ 1.5 秒的 Logo 动画时间
+    const logoDuration = Duration(milliseconds: 1500);
+    final logoStart = duration - logoDuration;
+
+    // ---------- 1）计算 Logo 动画进度 ----------
+    if (position >= logoStart) {
+      // 已经进入最后 1.5 秒
+      double p = (position - logoStart).inMilliseconds /
+          logoDuration.inMilliseconds;
+      if (p < 0) p = 0;
+      if (p > 1) p = 1;
+
+      if (p != _logoProgress) {
+        setState(() {
+          _logoProgress = p; // 0 → 1 逐渐画完
+        });
+      }
+    } else {
+      // 还没到最后 1.5 秒，确保 Logo 是隐藏的
+      if (_logoProgress != 0.0) {
+        setState(() {
+          _logoProgress = 0.0;
+        });
+      }
+    }
+
+    // ---------- 2）视频播完后：让 Logo 多停留一会再跳 ----------
+    if (!_hasScheduledNext && position >= duration) {
+      _hasScheduledNext = true;
+
+      // 确保最后停留时 logo 是完整的
+      if (_logoProgress != 1.0) {
+        setState(() {
+          _logoProgress = 1.0;
+        });
+      }
+
+      // ✅ 这里控制“结束时停留多久”（现在是 1 秒）
+      Future.delayed(const Duration(seconds: 1), () {
+        _goNext();
+      });
+    }
+  }
+
+  void _goNext() {
+    if (!mounted) return;
+    _videoController.removeListener(_onVideoUpdate);
+
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(builder: (_) => const AuthGate()),
+    );
   }
 
   @override
   void dispose() {
-    _controller.dispose();
+    _videoController.removeListener(_onVideoUpdate);
+    _videoController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
-
-      body: Stack(
-        children: [
-          // ✅ 背景插画碎片（可爱风）
-         // ✅ 背景彩色插画星星（更多、更丰富）
-Positioned(
-  top: -40,
-  left: -30,
-  child: StarBurst(size: 120, color: const Color.fromARGB(255, 129, 223, 128)), // 淡绿
-),
-Positioned(
-  top: 60,
-  right: -20,
-  child: StarBurst(size: 150, color: const Color.fromARGB(255, 184, 137, 239)), // 淡紫
-),
-Positioned(
-  top: 180,
-  left: 40,
-  child: StarBurst(size: 60, color: const Color.fromARGB(255, 238, 125, 168)), // 粉
-),
-Positioned(
-  bottom: 200,
-  right: 40,
-  child: StarBurst(size: 75, color: const Color.fromARGB(255, 227, 195, 112)), // 淡黄
-),
-Positioned(
-  bottom: 80,
-  left: -15,
-  child: StarBurst(size: 85, color: const Color.fromARGB(255, 127, 188, 232)), // 天蓝
-),
-Positioned(
-  top: 260,
-  right: 80,
-  child: StarBurst(size: 120, color: const Color.fromARGB(255, 232, 133, 93)), // 珊瑚橘
-),
-Positioned(
-  bottom: 260,
-  right: -10,
-  child: StarBurst(size: 110, color: const Color.fromARGB(255, 115, 221, 193)), // 青绿色
-),
-Positioned(
-  bottom: 260,
-  right: 250,
-  child: StarBurst(size: 110, color: const Color.fromARGB(255, 118, 239, 111)), // 绿色
-),
-
-          // ✅ 中间 Logo + 下方文字（都带动画）
-Center(
-  child: Column(
-    mainAxisSize: MainAxisSize.min,
-    children: [
-      // ✅ Logo 动画
-      AnimatedBuilder(
-        animation: _controller,
-        builder: (context, child) {
-          return Transform.scale(
-            scale: 0.7 + _controller.value * 0.3,
-            child: CustomPaint(
-              painter: HotelLogoPainter(_controller.value),
-              size: const Size(200, 200),
-            ),
-          );
-        },
-      ),
-
-      const SizedBox(height: 12),
-
-      // ✅ Logo 下方文字渐出动画
-      FadeTransition(
-        opacity: CurvedAnimation(
-          parent: _controller,
-          curve: const Interval(0.3, 1.0, curve: Curves.easeIn),
-        ),
-        child: const Text(
-          "HotelEase",
-          style: TextStyle(
-            fontSize: 26,
-            fontWeight: FontWeight.bold,
-            color: Colors.black87,
-            letterSpacing: 0.5,
-          ),
-        ),
-      ),
-    ],
-  ),
-),
-
-
-          // ✅ 底部文本
-          Positioned(
-            bottom: 80,
-            left: 0,
-            right: 0,
-            child: Column(
-              children: const [
-                Text(
-                  "Welcome to HotelEase",
-                  style: TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.black87,
+      backgroundColor: Colors.black,
+      body: _isReady
+          ? Stack(
+              children: [
+                // ✅ 背景视频：铺满屏幕（没有黑边）
+                SizedBox.expand(
+                  child: FittedBox(
+                    fit: BoxFit.cover,
+                    child: SizedBox(
+                      width: _videoController.value.size.width,
+                      height: _videoController.value.size.height,
+                      child: VideoPlayer(_videoController),
+                    ),
                   ),
                 ),
-                SizedBox(height: 8),
-                Text(
-                  "Find rooms, book stays, enjoy comfort",
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.black54,
+
+                // ✅ 最后 1.5 秒 + 结束停留时：中间画出 Logo + 文字
+                if (_logoProgress > 0)
+                  Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // Logo 线条动画
+                        SizedBox(
+                          width: 180,
+                          height: 180,
+                          child: CustomPaint(
+                            painter: HotelLogoPainter(_logoProgress),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+
+                        // 「HotelEase」从左到右渐显
+                        ClipRect(
+                          child: Align(
+                            alignment: Alignment.centerLeft,
+                            widthFactor: _logoProgress.clamp(0.0, 1.0),
+                            child: const Text(
+                              "HotelEase",
+                              style: TextStyle(
+                                fontSize: 40,
+                                fontWeight: FontWeight.bold,
+                                color: Color.fromARGB(255, 0, 0, 0), // 视频上一般用白色比较清楚
+                                letterSpacing: 0.5,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
               ],
+            )
+          : const Center(
+              child: CircularProgressIndicator(),
             ),
-          ),
-        ],
-      ),
     );
   }
 }
