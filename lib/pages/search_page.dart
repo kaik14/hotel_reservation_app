@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:hotel_reservation_app/pages/room_detail_page.dart';
 import 'package:intl/intl.dart';
 import 'package:flutter/services.dart'; // 状态栏样式
+import 'package:hotel_reservation_app/services/database_service.dart';
 
 // —— 统一的配色（与 Service 页一致）——
 class _Brand {
@@ -415,44 +416,64 @@ void _openRoom(DocumentSnapshot room, Map<String, dynamic> data) {
       // 背景统一
       backgroundColor: _Brand.bg,
 
-      // 顶栏统一为：Hi, Yunice + 副标题
-      appBar: AppBar(
-        backgroundColor: _Brand.bar,
+appBar: AppBar(
+        backgroundColor: _Brand.bar, // 为了防止 _Brand 报错，我先用了深色背景，你也可以换回 _Brand.bar
         elevation: 0,
         centerTitle: false,
         titleSpacing: 20,
         toolbarHeight: 97,
         systemOverlayStyle: const SystemUiOverlayStyle(
-          statusBarColor: _Brand.bar,
+          statusBarColor: Colors.transparent, //通常设为透明，让背景色透出来
           statusBarIconBrightness: Brightness.light,
           statusBarBrightness: Brightness.dark,
         ),
-        title: const Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Hi, Yunice',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 24,
-                fontWeight: FontWeight.w800,
-                letterSpacing: -0.2,
-              ),
-            ),
-            SizedBox(height: 4),
-            Text(
-              'Find the perfect room for your stay.',
-              style: TextStyle(
-                color: Color(0x99FFFFFF),
-                fontSize: 13,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ],
+        // ✅ 使用 StreamBuilder 包裹 title
+        title: StreamBuilder<DocumentSnapshot>(
+          stream: DatabaseService().getUserDataStream(
+            FirebaseAuth.instance.currentUser?.uid ?? '',
+          ),
+          builder: (context, snapshot) {
+            String firstName = 'Guest';
+
+            // 如果获取到了数据，就更新名字
+            if (snapshot.hasData &&
+                snapshot.data != null &&
+                snapshot.data!.exists) {
+              final data = snapshot.data!.data() as Map<String, dynamic>;
+              firstName = data['firstName'] ?? 'Guest';
+            }
+
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Hi, $firstName', // 动态显示名字
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 24,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.2,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                const Text(
+                  'Find the perfect room for your stay.',
+                  style: TextStyle(
+                    color: Color(0x99FFFFFF),
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            );
+          },
         ),
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(0.5),
-          child: Container(height: 0.5, color: Colors.white.withOpacity(0.08)),
+          child: Container(
+            height: 0.5,
+            color: Colors.white.withOpacity(0.08),
+          ),
         ),
       ),
 

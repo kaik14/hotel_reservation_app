@@ -14,7 +14,7 @@ dependencies:
   firebase_auth: ^5.1.1
   cloud_firestore: ^5.0.2
   flutter_stripe: ^10.1.1
-  app_state: ^0.9.6 # ✅ Downgrade to a compatible version
+  app_state: ^0.9.6
 
   cupertino_icons: ^1.0.8
   intl: ^0.19.0
@@ -31,15 +31,11 @@ dev_dependencies:
   flutter_lints: ^5.0.0
 
 flutter:
-
   uses-material-design: true
 
   assets:
      - assets/rooms/
      - assets/icons/hotel_icon.png
      - assets/seacity.jpg
-<<<<<<< HEAD
      - assets/models/
-=======
      - assets/videos/splash.mp4
->>>>>>> 5345468 (启动页动画)

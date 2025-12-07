@@ -21,6 +21,7 @@ class _LoginPageState extends State<LoginPage> {
   final TextEditingController _passwordController = TextEditingController();
 
   bool _isLoading = false;
+  bool _obscurePassword = true;
   final AuthService _authService = AuthService(); // 实例化 AuthService
 
   // --- 登录逻辑 ---
@@ -195,6 +196,8 @@ class _LoginPageState extends State<LoginPage> {
                 // --- Password 输入框 ---
                 TextFormField(
                   controller: _passwordController,
+                  // ✅ 绑定状态变量
+                  obscureText: _obscurePassword, 
                   decoration: InputDecoration(
                     hintText: 'Password',
                     filled: true,
@@ -203,14 +206,28 @@ class _LoginPageState extends State<LoginPage> {
                       borderRadius: BorderRadius.circular(12.0),
                       borderSide: BorderSide.none,
                     ),
-                    contentPadding: EdgeInsets.symmetric(
+                    contentPadding: const EdgeInsets.symmetric(
                       vertical: 16.0,
                       horizontal: 20.0,
                     ),
+                    // ✅ 新增：后缀图标（眼睛）
+                    suffixIcon: IconButton(
+                      icon: Icon(
+                        // 根据状态显示不同的图标（睁眼/闭眼）
+                        _obscurePassword 
+                            ? Icons.visibility_off 
+                            : Icons.visibility,
+                        color: Colors.grey,
+                      ),
+                      onPressed: () {
+                        // 点击时切换状态
+                        setState(() {
+                          _obscurePassword = !_obscurePassword;
+                        });
+                      },
+                    ),
                   ),
-                  obscureText: true,
                   validator: (value) {
-                    // 登录时不检查复杂性，只检查非空
                     if (value == null || value.isEmpty) {
                       return 'Please enter your password';
                     }

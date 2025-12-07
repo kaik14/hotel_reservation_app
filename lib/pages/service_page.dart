@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'; // ← 用于设置状态栏图标/文字颜色
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:hotel_reservation_app/services/database_service.dart';
 
 /// Ultra-minimal, single-column Services page.
 /// - Light theme to pair with the dark bottom bar in AppShell
@@ -86,46 +89,65 @@ class _ServiceScaffold extends StatelessWidget {
     return Scaffold(
       backgroundColor: _LightPalette.bg,
       appBar: AppBar(
-        // ==== 顶部栏仅此处改动 ====
-        backgroundColor: const Color(0xFF0F1722), // 深色，与底栏统一
+        // ==== 顶部栏样式保持不变 ====
+        backgroundColor: const Color(0xFF0F1722), // 深色背景
         elevation: 0,
         centerTitle: false,
         titleSpacing: 20,
-        toolbarHeight: 97, // ← 顶部栏加高（默认约 56），你可改 64/72/80
+        toolbarHeight: 97, // 保持加高的高度
         systemOverlayStyle: const SystemUiOverlayStyle(
           statusBarColor: Color(0xFF0F1722),
-          statusBarIconBrightness: Brightness.light, // Android 浅色图标
-          statusBarBrightness: Brightness.dark, // iOS 深底
+          statusBarIconBrightness: Brightness.light,
+          statusBarBrightness: Brightness.dark,
         ),
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: const [
-            Text(
-              'Hi, Yunice',
-              style: TextStyle(
-                color: Colors.white, // 深色顶栏下标题用白色
-                fontSize: 24,
-                fontWeight: FontWeight.w800,
-                letterSpacing: -0.2,
-              ),
-            ),
-            SizedBox(height: 4),
-            Text(
-              'Pick what you need, anytime.',
-              style: TextStyle(
-                color: Color(0x99FFFFFF), // 次要文字半透明白
-                fontSize: 13,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ],
+        // ✅ 使用 StreamBuilder 动态获取名字
+        title: StreamBuilder<DocumentSnapshot>(
+          stream: DatabaseService().getUserDataStream(
+            FirebaseAuth.instance.currentUser?.uid ?? '',
+          ),
+          builder: (context, snapshot) {
+            String firstName = 'Guest'; // 默认名字
+
+            // 如果成功获取到数据，更新名字
+            if (snapshot.hasData &&
+                snapshot.data != null &&
+                snapshot.data!.exists) {
+              final data = snapshot.data!.data() as Map<String, dynamic>;
+              firstName = data['firstName'] ?? 'Guest';
+            }
+
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Hi, $firstName', // ✅ 动态显示名字
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 24,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.2,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                const Text(
+                  'Pick what you need, anytime.', // 保持原来的副标题
+                  style: TextStyle(
+                    color: Color(0x99FFFFFF),
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            );
+          },
         ),
-        // 可选的细分隔线：想更“纯平”可删掉
+        // 底部细分隔线
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(0.5),
           child: Container(height: 0.5, color: Colors.white.withOpacity(0.08)),
         ),
       ),
+    
       body: ListView.separated(
         physics: const BouncingScrollPhysics(),
         padding: EdgeInsets.fromLTRB(20, 8, 20, bottomPadding),

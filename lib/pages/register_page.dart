@@ -19,6 +19,10 @@ class _RegisterPageState extends State<RegisterPage> {
   final _phoneController = TextEditingController();
 
   bool _isLoading = false;
+  
+  // ✅ 1. 新增：控制密码是否隐藏的变量
+  bool _obscurePassword = true;
+
   final AuthService _authService = AuthService();
 
   // 提交表单的方法
@@ -30,7 +34,7 @@ class _RegisterPageState extends State<RegisterPage> {
     setState(() => _isLoading = true);
 
     try {
-      // 3. 调用我们更新后的注册方法
+      // 3. 调用注册方法
       await _authService.registerWithEmailAndPassword(
         _emailController.text,
         _passwordController.text,
@@ -40,16 +44,11 @@ class _RegisterPageState extends State<RegisterPage> {
       );
 
       if (mounted) {
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (context) => const PreferencePage()),
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => const PreferencePage()),
         );
       }
-    
-
-      // 4. 注册成功后，AuthGate 会自动处理跳转，
-      //    但由于我们是 PUSH 进来的，最好是 pop 回去
-      
     } on FirebaseAuthException catch (e) {
       // 5. 处理 Firebase Auth 异常
       String message = 'Registration failed';
@@ -74,19 +73,19 @@ class _RegisterPageState extends State<RegisterPage> {
       backgroundColor: Colors.white,
       body: Center(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(32.0), // 与登录页一致的边距
+          padding: const EdgeInsets.all(32.0),
           child: Form(
             key: _formKey,
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 // --- Logo ---
-                Icon(
-                  Icons.hotel, // 使用酒店图标
+                const Icon(
+                  Icons.hotel,
                   size: 60,
                   color: Colors.black87,
                 ),
-                Text(
+                const Text(
                   'HotelEase',
                   style: TextStyle(
                     fontSize: 28,
@@ -107,13 +106,13 @@ class _RegisterPageState extends State<RegisterPage> {
                       borderRadius: BorderRadius.circular(12.0),
                       borderSide: BorderSide.none,
                     ),
-                    contentPadding:
-                        EdgeInsets.symmetric(vertical: 16.0, horizontal: 20.0),
+                    contentPadding: const EdgeInsets.symmetric(
+                        vertical: 16.0, horizontal: 20.0),
                   ),
                   validator: (val) =>
                       val!.isEmpty ? 'Please enter your first name' : null,
                 ),
-                const SizedBox(height: 16), // 调整间距
+                const SizedBox(height: 16),
 
                 // --- Last Name 输入框 ---
                 TextFormField(
@@ -126,8 +125,8 @@ class _RegisterPageState extends State<RegisterPage> {
                       borderRadius: BorderRadius.circular(12.0),
                       borderSide: BorderSide.none,
                     ),
-                    contentPadding:
-                        EdgeInsets.symmetric(vertical: 16.0, horizontal: 20.0),
+                    contentPadding: const EdgeInsets.symmetric(
+                        vertical: 16.0, horizontal: 20.0),
                   ),
                   validator: (val) =>
                       val!.isEmpty ? 'Please enter your last name' : null,
@@ -145,8 +144,8 @@ class _RegisterPageState extends State<RegisterPage> {
                       borderRadius: BorderRadius.circular(12.0),
                       borderSide: BorderSide.none,
                     ),
-                    contentPadding:
-                        EdgeInsets.symmetric(vertical: 16.0, horizontal: 20.0),
+                    contentPadding: const EdgeInsets.symmetric(
+                        vertical: 16.0, horizontal: 20.0),
                   ),
                   keyboardType: TextInputType.phone,
                   validator: (val) =>
@@ -165,8 +164,8 @@ class _RegisterPageState extends State<RegisterPage> {
                       borderRadius: BorderRadius.circular(12.0),
                       borderSide: BorderSide.none,
                     ),
-                    contentPadding:
-                        EdgeInsets.symmetric(vertical: 16.0, horizontal: 20.0),
+                    contentPadding: const EdgeInsets.symmetric(
+                        vertical: 16.0, horizontal: 20.0),
                   ),
                   keyboardType: TextInputType.emailAddress,
                   validator: (val) => (val!.isEmpty || !val.contains('@'))
@@ -175,9 +174,11 @@ class _RegisterPageState extends State<RegisterPage> {
                 ),
                 const SizedBox(height: 16),
 
-                // --- Password 输入框 ---
+                // --- Password 输入框 (已修改) ---
                 TextFormField(
                   controller: _passwordController,
+                  // ✅ 2. 绑定变量
+                  obscureText: _obscurePassword,
                   decoration: InputDecoration(
                     hintText: 'Password',
                     filled: true,
@@ -186,42 +187,47 @@ class _RegisterPageState extends State<RegisterPage> {
                       borderRadius: BorderRadius.circular(12.0),
                       borderSide: BorderSide.none,
                     ),
-                    contentPadding:
-                        EdgeInsets.symmetric(vertical: 16.0, horizontal: 20.0),
-                    //
-                    // ✅ 重点改进：添加 helperText 
-                    //
+                    contentPadding: const EdgeInsets.symmetric(
+                        vertical: 16.0, horizontal: 20.0),
+                    // ✅ 3. 添加小眼睛图标
+                    suffixIcon: IconButton(
+                      icon: Icon(
+                        _obscurePassword
+                            ? Icons.visibility_off
+                            : Icons.visibility,
+                        color: Colors.grey,
+                      ),
+                      onPressed: () {
+                        setState(() {
+                          _obscurePassword = !_obscurePassword;
+                        });
+                      },
+                    ),
                     helperText:
                         'Must be 8+ characters, with uppercase, lowercase, and a number.',
-                    helperMaxLines:
-                        2, // 允许帮助文本换行，防止溢出
-                    helperStyle: TextStyle(
-                        color: Colors.grey[600]), // 给帮助文本一个柔和的颜色
+                    helperMaxLines: 2,
+                    helperStyle: TextStyle(color: Colors.grey[600]),
                   ),
-                  obscureText: true,
-                  //
-                  // ✅ 重点：验证逻辑保持不变，它会在提交时检查所有规则
-                  //
                   validator: (val) {
                     if (val == null || val.isEmpty) {
-                      return 'Please enter a password'; // 提示1：空的
+                      return 'Please enter a password';
                     }
                     if (val.length < 8) {
-                      return 'Password must be 8+ characters'; // 提示2：长度
+                      return 'Password must be 8+ characters';
                     }
                     if (!val.contains(RegExp(r'[A-Z]'))) {
-                      return 'Must include an uppercase letter'; // S 提示3：大写
+                      return 'Must include an uppercase letter';
                     }
                     if (!val.contains(RegExp(r'[a-z]'))) {
-                      return 'Must include a lowercase letter'; // 提示4：小写
+                      return 'Must include a lowercase letter';
                     }
                     if (!val.contains(RegExp(r'\d'))) {
-                      return 'Must include one number'; // 提示5：数字
+                      return 'Must include one number';
                     }
-                    return null; // 全部通过
+                    return null;
                   },
                 ),
-                const SizedBox(height: 32), // 调整间距
+                const SizedBox(height: 32),
 
                 // --- 注册按钮 ---
                 if (_isLoading)
@@ -230,9 +236,9 @@ class _RegisterPageState extends State<RegisterPage> {
                   ElevatedButton(
                     onPressed: _submit,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.black, // 黑色背景
-                      foregroundColor: Colors.white, // 白色文字
-                      minimumSize: const Size(double.infinity, 50), // 撑满宽度
+                      backgroundColor: Colors.black,
+                      foregroundColor: Colors.white,
+                      minimumSize: const Size(double.infinity, 50),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12.0),
                       ),
@@ -247,16 +253,15 @@ class _RegisterPageState extends State<RegisterPage> {
                 // --- 返回登录页按钮 ---
                 TextButton(
                   onPressed: () {
-                    // 关闭注册页，返回上一页（即登录页）
                     Navigator.pop(context);
                   },
                   child: RichText(
-                    text: TextSpan(
+                    text: const TextSpan(
                       style: TextStyle(
                         color: Colors.black54,
                         fontSize: 14,
                       ),
-                      children: const <TextSpan>[
+                      children: <TextSpan>[
                         TextSpan(
                           text: 'Already have an account? ',
                         ),
@@ -279,4 +284,3 @@ class _RegisterPageState extends State<RegisterPage> {
     );
   }
 }
-
