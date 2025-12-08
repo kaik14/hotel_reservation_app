@@ -6,6 +6,9 @@ import 'package:hotel_reservation_app/pages/conference_hall_booking_page.dart';
 import 'package:hotel_reservation_app/services/database_service.dart';
 import 'package:hotel_reservation_app/pages/housekeeping_booking_page.dart';
 import 'package:hotel_reservation_app/pages/laundry_booking_page.dart';
+import 'package:hotel_reservation_app/pages/taxi_booking_page.dart';
+import 'package:hotel_reservation_app/pages/dining_booking_page.dart';
+import 'package:hotel_reservation_app/pages/spa_booking_page.dart';
 
 // ⭐ 新增：导入 SwimmingBookingPage、GymBookingPage（注意路径）
 import 'package:hotel_reservation_app/pages/swimming_booking_page.dart';
@@ -340,12 +343,32 @@ class _ServiceListCardState extends State<_ServiceListCard> {
                               ),
                             );
                           } else if (item.label == 'Laundry & Ironing') {
-                            // ⭐⭐ 新增
                             Navigator.push(
                               context,
                               MaterialPageRoute(
                                 builder: (_) =>
                                     const LaundryIroningBookingPage(),
+                              ),
+                            );
+                          } else if (item.label == 'Hotel Taxi') {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => const TaxiBookingPage(),
+                              ),
+                            );
+                          } else if (item.label == 'Dining Reservation') {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => const DiningBookingPage(),
+                              ),
+                            );
+                          } else if (item.label == 'Spa Center') {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => const SpaBookingPage(),
                               ),
                             );
                           } else {
