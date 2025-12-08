@@ -41,3 +41,8 @@ flutter:
     - assets/models/
     - assets/videos/splash.mp4
     - assets/services/     # ⭐ pool.jpg、pool_360.jpg、gym.jpg、gym_360.jpg 等
+    - assets/gifs/final2.gif
+    - assets/gifs/final3.gif
+    - assets/gifs/final4.gif
+    - assets/gifs/final5.gif
+    - assets/videos/booking_success.mp4

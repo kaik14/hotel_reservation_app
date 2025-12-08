@@ -20,11 +20,13 @@ class BookingPage extends StatefulWidget {
 }
 
 class _BookingPageState extends State<BookingPage> {
-
   Future<void> _handleCancelBooking(String bookingId, DateTime checkInDate) async {
     final now = DateTime.now();
     if (now.isAfter(checkInDate.subtract(const Duration(hours: 24)))) {
-      _showTopNotification("Cancellation failed: You can only cancel up to 24 hours before check-in.", Colors.red);
+      _showTopNotification(
+        "Cancellation failed: You can only cancel up to 24 hours before check-in.",
+        Colors.red,
+      );
       return;
     }
 
@@ -39,8 +41,10 @@ class _BookingPageState extends State<BookingPage> {
           .doc(bookingId)
           .delete();
 
-      _showTopNotification("Booking cancelled and refund processed successfully.", Colors.green);
-
+      _showTopNotification(
+        "Booking cancelled and refund processed successfully.",
+        Colors.green,
+      );
     } catch (e) {
       _showTopNotification("An error occurred while cancelling: $e", Colors.red);
     }
@@ -62,6 +66,91 @@ class _BookingPageState extends State<BookingPage> {
     Future.delayed(const Duration(seconds: 4), () {
       overlayEntry.remove();
     });
+  }
+
+  /// ✅ 浮动 GIF 助手机器人状态
+  bool _showAssistant = true;
+  Offset _assistantOffset = const Offset(16, 140);
+  bool _initializedOffset = false; // 第一次根据屏幕宽度设置位置
+
+  /// ✅ 浮在最上层的可拖动 GIF 助手（起始在右侧）
+  Widget _buildFloatingAssistant(BuildContext context) {
+    final size = MediaQuery.of(context).size;
+
+    const double avatarWidth = 130;
+    const double avatarHeight = 130;
+
+    // 第一次构建时，把起始位置设到右侧：距右 16，距上 140
+    if (!_initializedOffset) {
+      _assistantOffset = Offset(
+        size.width - avatarWidth - 16,
+        140,
+      );
+      _initializedOffset = true;
+    }
+
+    // 限制不让拖出屏幕
+    final double left = _assistantOffset.dx.clamp(
+      0.0,
+      size.width - avatarWidth,
+    );
+    final double top = _assistantOffset.dy.clamp(
+      0.0,
+      size.height - avatarHeight - MediaQuery.of(context).padding.top,
+    );
+
+    return Positioned(
+      left: left,
+      top: top,
+      child: GestureDetector(
+        onPanUpdate: (details) {
+          setState(() {
+            _assistantOffset += details.delta;
+          });
+        },
+        child: SizedBox(
+          width: avatarWidth,
+          height: avatarHeight,
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              // 直接放 GIF（这里你可以换成 booking 页专属的 gif）
+              Positioned.fill(
+                child: Image.asset(
+                  'assets/gifs/final5.gif',
+                  fit: BoxFit.contain,
+                ),
+              ),
+              // 右上角小的关闭按钮
+              Positioned(
+                right: 40,
+                top: -4,
+                child: GestureDetector(
+                  onTap: () {
+                    setState(() {
+                      _showAssistant = false;
+                    });
+                  },
+                  child: Container(
+                    width: 20,
+                    height: 20,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Colors.black.withOpacity(0.6),
+                    ),
+                    child: const Icon(
+                      Icons.close,
+                      size: 14,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   @override
@@ -92,229 +181,406 @@ class _BookingPageState extends State<BookingPage> {
         title: const Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('My Bookings', style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w800, letterSpacing: -0.2)),
+            Text(
+              'My Bookings',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 24,
+                fontWeight: FontWeight.w800,
+                letterSpacing: -0.2,
+              ),
+            ),
             SizedBox(height: 4),
-            Text('Review your stays at a glance.', style: TextStyle(color: Color(0x99FFFFFF), fontSize: 13, fontWeight: FontWeight.w500)),
+            Text(
+              'Review your stays at a glance.',
+              style: TextStyle(
+                color: Color(0x99FFFFFF),
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
           ],
         ),
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(0.5),
-          child: Container(height: 0.5, color: Colors.white.withOpacity(0.08)),
+          child: Container(
+            height: 0.5,
+            color: Colors.white.withOpacity(0.08),
+          ),
         ),
       ),
-      body: StreamBuilder<QuerySnapshot>(
-        stream: bookingsRef.orderBy('createdAt', descending: true).snapshots(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-            return const Center(child: Text('No bookings yet.', style: TextStyle(fontSize: 16, color: Colors.grey)));
-          }
-
-          return ListView.builder(
-            itemCount: snapshot.data!.docs.length,
-            padding: const EdgeInsets.all(16),
-            itemBuilder: (context, index) {
-              final doc = snapshot.data!.docs[index];
-              final data = doc.data() as Map<String, dynamic>;
-
-              final title = data['roomTypeTitle'] ?? 'Unknown';
-              final imageName = data['imageName'] ?? "${data['roomTypeId']}.jpg";
-              final image = "assets/rooms/$imageName";
-              final checkIn = (data['checkIn'] as Timestamp?)?.toDate();
-              final checkOut = (data['checkOut'] as Timestamp?)?.toDate();
-              final guests = data['guests'] ?? 1;
-              final price = data['priceText'] ?? "RM-";
-              final roomNo = data['roomNo'] ?? '-';
-              final roomTypeId = data['roomTypeId'] ?? '';
-              final now = DateTime.now();
-              final today = DateTime(now.year, now.month, now.day);
-              final dateFmt = DateFormat('dd MMM yyyy');
-
-              // ✅✅✅ Restored Status Logic ✅✅✅
-              String status;
-              Color bgColor;
-              Color textColor;
-
-              if (checkIn == null) {
-                status = "Pending";
-                bgColor = Colors.grey[200]!;
-                textColor = Colors.black54;
-              } else if (checkIn.isBefore(today)) {
-                status = "Checked In";
-                bgColor = Colors.green[100]!;
-                textColor = Colors.green[800]!;
-              } else {
-                status = "Not Checked In";
-                bgColor = Colors.orange[100]!;
-                textColor = Colors.orange[800]!;
-              }
-
-              return GestureDetector(
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => BookingDetailPage(bookingId: doc.id, data: data),
+      body: SafeArea(
+        child: Stack(
+          children: [
+            // 底层：原本的 StreamBuilder 内容
+            StreamBuilder<QuerySnapshot>(
+              stream: bookingsRef.orderBy('createdAt', descending: true).snapshots(),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                  return const Center(
+                    child: Text(
+                      'No bookings yet.',
+                      style: TextStyle(fontSize: 16, color: Colors.grey),
                     ),
                   );
-                },
-                child: Container(
-                  margin: const EdgeInsets.only(bottom: 16),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(16),
-                    boxShadow: const [BoxShadow(color: Color(0x14000000), blurRadius: 16, offset: Offset(0, 8))],
-                  ),
-                  child: Stack(
-                    children: [
-                      Row(
-                        children: [
-                          ClipRRect(
-                            borderRadius: const BorderRadius.horizontal(left: Radius.circular(16)),
-                            child: Image.asset(image, height: 100, width: 120, fit: BoxFit.cover),
+                }
+
+                return ListView.builder(
+                  itemCount: snapshot.data!.docs.length,
+                  padding: const EdgeInsets.all(16),
+                  itemBuilder: (context, index) {
+                    final doc = snapshot.data!.docs[index];
+                    final data = doc.data() as Map<String, dynamic>;
+
+                    final title = data['roomTypeTitle'] ?? 'Unknown';
+                    final imageName =
+                        data['imageName'] ?? "${data['roomTypeId']}.jpg";
+                    final image = "assets/rooms/$imageName";
+                    final checkIn =
+                        (data['checkIn'] as Timestamp?)?.toDate();
+                    final checkOut =
+                        (data['checkOut'] as Timestamp?)?.toDate();
+                    final guests = data['guests'] ?? 1;
+                    final price = data['priceText'] ?? "RM-";
+                    final roomNo = data['roomNo'] ?? '-';
+                    final roomTypeId = data['roomTypeId'] ?? '';
+                    final now = DateTime.now();
+                    final today = DateTime(now.year, now.month, now.day);
+                    final dateFmt = DateFormat('dd MMM yyyy');
+
+                    // ✅ Status Logic
+                    String status;
+                    Color bgColor;
+                    Color textColor;
+
+                    if (checkIn == null) {
+                      status = "Pending";
+                      bgColor = Colors.grey[200]!;
+                      textColor = Colors.black54;
+                    } else if (checkIn.isBefore(today)) {
+                      status = "Checked In";
+                      bgColor = Colors.green[100]!;
+                      textColor = Colors.green[800]!;
+                    } else {
+                      status = "Not Checked In";
+                      bgColor = Colors.orange[100]!;
+                      textColor = Colors.orange[800]!;
+                    }
+
+                    return GestureDetector(
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => BookingDetailPage(
+                              bookingId: doc.id,
+                              data: data,
+                            ),
                           ),
-                          Expanded(
-                            child: Padding(
-                              padding: const EdgeInsets.all(12),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
+                        );
+                      },
+                      child: Container(
+                        margin: const EdgeInsets.only(bottom: 16),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(16),
+                          boxShadow: const [
+                            BoxShadow(
+                              color: Color(0x14000000),
+                              blurRadius: 16,
+                              offset: Offset(0, 8),
+                            )
+                          ],
+                        ),
+                        child: Stack(
+                          children: [
+                            Row(
+                              children: [
+                                ClipRRect(
+                                  borderRadius: const BorderRadius.horizontal(
+                                    left: Radius.circular(16),
+                                  ),
+                                  child: Image.asset(
+                                    image,
+                                    height: 100,
+                                    width: 120,
+                                    fit: BoxFit.cover,
+                                  ),
+                                ),
+                                Expanded(
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(12),
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          title,
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.w800,
+                                            fontSize: 16,
+                                            letterSpacing: .1,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 6),
+                                        Text(
+                                          "${checkIn != null ? dateFmt.format(checkIn) : '?'} → ${checkOut != null ? dateFmt.format(checkOut) : '?'}",
+                                          style: const TextStyle(
+                                            fontSize: 13,
+                                            color: Colors.black54,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          "Room $roomNo • Guests: $guests",
+                                          style: const TextStyle(
+                                            fontSize: 13,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            Positioned(
+                              right: 12,
+                              bottom: 10,
+                              child: Row(
                                 children: [
-                                  Text(title, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16, letterSpacing: .1)),
-                                  const SizedBox(height: 6),
-                                  Text("${checkIn != null ? dateFmt.format(checkIn) : '?'} → ${checkOut != null ? dateFmt.format(checkOut) : '?'}", style: const TextStyle(fontSize: 13, color: Colors.black54)),
-                                  const SizedBox(height: 4),
-                                  Text("Room $roomNo • Guests: $guests", style: const TextStyle(fontSize: 13)),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 10,
+                                      vertical: 5,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: bgColor,
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                    child: Text(
+                                      status,
+                                      style: TextStyle(
+                                        color: textColor,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  if (status == "Not Checked In")
+                                    GestureDetector(
+                                      onTap: () {
+                                        showDialog(
+                                          context: context,
+                                          builder:
+                                              (BuildContext dialogContext) {
+                                            return AlertDialog(
+                                              title: const Text(
+                                                  'Confirm Cancellation'),
+                                              content: const Text(
+                                                  'Are you sure you want to cancel this booking? This action cannot be undone.'),
+                                              actions: <Widget>[
+                                                TextButton(
+                                                  child: const Text('Back'),
+                                                  onPressed: () =>
+                                                      Navigator.of(
+                                                              dialogContext)
+                                                          .pop(),
+                                                ),
+                                                TextButton(
+                                                  child: const Text(
+                                                    'Confirm',
+                                                    style: TextStyle(
+                                                        color: Colors.red),
+                                                  ),
+                                                  onPressed: () {
+                                                    Navigator.of(
+                                                            dialogContext)
+                                                        .pop();
+                                                    _handleCancelBooking(
+                                                      doc.id,
+                                                      checkIn!,
+                                                    );
+                                                  },
+                                                ),
+                                              ],
+                                            );
+                                          },
+                                        );
+                                      },
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 10,
+                                          vertical: 5,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: Colors.red[700],
+                                          borderRadius:
+                                              BorderRadius.circular(10),
+                                        ),
+                                        child: const Text(
+                                          "Cancel",
+                                          style: TextStyle(
+                                            color: Colors.white,
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 12,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  if (status == "Checked In")
+                                    GestureDetector(
+                                      onTap: () {
+                                        // 从预订记录里取楼层，如果没有就默认 8F
+                                        final String floorId =
+                                            (data['floorId'] ?? '8F')
+                                                .toString();
+
+                                        Navigator.push(
+                                          context,
+                                          MaterialPageRoute(
+                                            builder: (_) => RoomDetailPage(
+                                              docId: roomTypeId,
+                                              title: title,
+                                              imageUrl: image,
+                                              price: price,
+                                              description:
+                                                  data['description'] ?? '',
+                                              imageName: imageName,
+                                              floorId: floorId,
+                                              // initialCheckIn: checkIn,
+                                              // initialCheckOut: checkOut,
+                                            ),
+                                          ),
+                                        );
+                                      },
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 10,
+                                          vertical: 5,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: _Brand.accent,
+                                          borderRadius:
+                                              BorderRadius.circular(10),
+                                          boxShadow: [
+                                            BoxShadow(
+                                              color: _Brand.accent
+                                                  .withOpacity(0.22),
+                                              blurRadius: 10,
+                                              offset: const Offset(0, 6),
+                                            ),
+                                          ],
+                                        ),
+                                        child: const Text(
+                                          "Rebook",
+                                          style: TextStyle(
+                                            color: Colors.white,
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 12,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
                                 ],
                               ),
                             ),
-                          ),
-                        ],
-                      ),
-                      Positioned(
-                        right: 12,
-                        bottom: 10,
-                        child: Row(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                              decoration: BoxDecoration(color: bgColor, borderRadius: BorderRadius.circular(10)),
-                              child: Text(status, style: TextStyle(color: textColor, fontWeight: FontWeight.bold, fontSize: 12)),
-                            ),
-                            const SizedBox(width: 8),
-                            if (status == "Not Checked In")
-                              GestureDetector(
-                                onTap: () {
-                                  showDialog(
-                                    context: context,
-                                    builder: (BuildContext dialogContext) {
-                                      return AlertDialog(
-                                        title: const Text('Confirm Cancellation'),
-                                        content: const Text('Are you sure you want to cancel this booking? This action cannot be undone.'),
-                                        actions: <Widget>[
-                                          TextButton(child: const Text('Back'), onPressed: () => Navigator.of(dialogContext).pop()),
-                                          TextButton(
-                                            child: const Text('Confirm', style: TextStyle(color: Colors.red)),
-                                            onPressed: () {
-                                              Navigator.of(dialogContext).pop();
-                                              _handleCancelBooking(doc.id, checkIn!);
-                                            },
-                                          ),
-                                        ],
-                                      );
-                                    },
-                                  );
-                                },
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                                  decoration: BoxDecoration(color: Colors.red[700], borderRadius: BorderRadius.circular(10)),
-                                  child: const Text("Cancel", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
-                                ),
-                              ),
-                            if (status == "Checked In")
-  GestureDetector(
-    onTap: () {
-      // 从预订记录里取楼层，如果没有就默认 8F
-      final String floorId = (data['floorId'] ?? '8F').toString();
-
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => RoomDetailPage(
-            docId: roomTypeId,
-            title: title,
-            imageUrl: image,
-            price: price,
-            description: data['description'] ?? '',
-            imageName: imageName,
-            // 👇 必须补上这一行
-            floorId: floorId,
-            // 这里初始 check-in / out 随你要不要传，留空也可以：
-            // initialCheckIn: checkIn,
-            // initialCheckOut: checkOut,
-          ),
-        ),
-      );
-    },
-    child: Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      decoration: BoxDecoration(
-        color: _Brand.accent,
-        borderRadius: BorderRadius.circular(10),
-        boxShadow: [
-          BoxShadow(
-            color: _Brand.accent.withOpacity(0.22),
-            blurRadius: 10,
-            offset: const Offset(0, 6),
-          ),
-        ],
-      ),
-      child: const Text(
-        "Rebook",
-        style: TextStyle(
-          color: Colors.white,
-          fontWeight: FontWeight.bold,
-          fontSize: 12,
-        ),
-      ),
-                          ),
-                          ),
-
-                              
                           ],
                         ),
                       ),
-                    ],
+                    );
+                  },
+                );
+              },
+            ),
+
+            // 顶层：可拖动 GIF 助手
+            if (_showAssistant) _buildFloatingAssistant(context),
+
+            // 关闭后右下角召回按钮
+            if (!_showAssistant)
+              Positioned(
+                right: 16,
+                bottom: 16,
+                child: GestureDetector(
+                  onTap: () {
+                    setState(() {
+                      _showAssistant = true;
+                    });
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 8,
+                    ),
+                    decoration: BoxDecoration(
+                      color: _Brand.accent,
+                      borderRadius: BorderRadius.circular(20),
+                      boxShadow: [
+                        BoxShadow(
+                          color: _Brand.accent.withOpacity(0.3),
+                          blurRadius: 8,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.pets, size: 16, color: Colors.white),
+                        SizedBox(width: 6),
+                        Text(
+                          'Assistant',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.white,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-              );
-            },
-          );
-        },
+              ),
+          ],
+        ),
       ),
     );
   }
 }
 
+// ✅ 顶部滑入通知 Widget（保持不变）
 class SlideTransitionNotification extends StatefulWidget {
   final String message;
   final Color color;
-  const SlideTransitionNotification({super.key, required this.message, required this.color});
+  const SlideTransitionNotification(
+      {super.key, required this.message, required this.color});
 
   @override
-  State<SlideTransitionNotification> createState() => _SlideTransitionNotificationState();
+  State<SlideTransitionNotification> createState() =>
+      _SlideTransitionNotificationState();
 }
 
-class _SlideTransitionNotificationState extends State<SlideTransitionNotification> with SingleTickerProviderStateMixin {
+class _SlideTransitionNotificationState
+    extends State<SlideTransitionNotification>
+    with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   late Animation<Offset> _offsetAnimation;
 
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(vsync: this, duration: const Duration(milliseconds: 500));
-    _offsetAnimation = Tween<Offset>(begin: const Offset(0, -1.5), end: const Offset(0, 0)).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOutBack));
+    _controller = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 500));
+    _offsetAnimation = Tween<Offset>(
+      begin: const Offset(0, -1.5),
+      end: const Offset(0, 0),
+    ).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeOutBack),
+    );
     _controller.forward();
   }
 
@@ -332,7 +598,16 @@ class _SlideTransitionNotificationState extends State<SlideTransitionNotificatio
             children: [
               const Icon(Icons.notifications_active, color: Colors.white),
               const SizedBox(width: 12),
-              Expanded(child: Text(widget.message, style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w600))),
+              Expanded(
+                child: Text(
+                  widget.message,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
             ],
           ),
         ),

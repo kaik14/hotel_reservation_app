@@ -489,7 +489,7 @@ class RoomMapSelector extends StatelessWidget {
                     top: 0.60 * h,
                     width: 0.06 * w,
                     height: 0.38 * h,
-                    child: _buildUtilityBox("楼梯", Icons.stairs),
+                    child: _buildUtilityBox("Staircase", Icons.stairs),
                   ),
 
                   // 右下楼梯
@@ -498,7 +498,7 @@ class RoomMapSelector extends StatelessWidget {
                     top: 0.60 * h,
                     width: 0.06 * w,
                     height: 0.38 * h,
-                    child: _buildUtilityBox("楼梯", Icons.stairs),
+                    child: _buildUtilityBox("Staircase", Icons.stairs),
                   ),
 
                   // 中间电梯
@@ -507,7 +507,7 @@ class RoomMapSelector extends StatelessWidget {
                     top: 0.02 * h,
                     width: 0.08 * w,
                     height: 0.38 * h,
-                    child: _buildUtilityBox("电梯", Icons.elevator),
+                    child: _buildUtilityBox("Elevator", Icons.elevator),
                   ),
                 ],
               );
