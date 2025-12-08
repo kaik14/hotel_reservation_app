@@ -77,14 +77,14 @@ class _BookingPageState extends State<BookingPage> {
   Widget _buildFloatingAssistant(BuildContext context) {
     final size = MediaQuery.of(context).size;
 
-    const double avatarWidth = 130;
-    const double avatarHeight = 130;
+    const double avatarWidth = 150;
+    const double avatarHeight = 150;
 
     // 第一次构建时，把起始位置设到右侧：距右 16，距上 140
     if (!_initializedOffset) {
       _assistantOffset = Offset(
-        size.width - avatarWidth - 16,
-        140,
+        size.width - avatarWidth - 6,
+        510,
       );
       _initializedOffset = true;
     }

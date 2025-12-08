@@ -13,17 +13,20 @@ class SpaBookingPage extends StatefulWidget {
 class _SpaBookingPageState extends State<SpaBookingPage> {
   DateTime? _selectedDate;
   TimeOfDay? _selectedTime;
-
   int _guests = 1;
-  String? _selectedServiceKey; // 选中的治疗项目 key，如 swedishMassage
+
+  String? _selectedTreatmentKey;
 
   bool _showPanorama = false;
 
   Future<DocumentSnapshot<Map<String, dynamic>>> _loadService() {
-    return FirebaseFirestore.instance.collection('services').doc('spa').get();
+    return FirebaseFirestore.instance
+        .collection('services')
+        .doc('spa')
+        .get();
   }
 
-  // ---------- 工具函数 ----------
+  // ---------- helper ----------
 
   TimeOfDay _parseTimeOfDay(String hhmm) {
     final parts = hhmm.split(':');
@@ -65,27 +68,23 @@ class _SpaBookingPageState extends State<SpaBookingPage> {
     return months[month - 1];
   }
 
-  // ---------- 交互逻辑 ----------
-
-  // 日期：今明两天（由 maxAdvanceDays 控制）
   Future<void> _pickDate(BuildContext context, int maxAdvanceDays) async {
     final today = DateTime.now();
     final DateTime? picked = await showDatePicker(
       context: context,
       initialDate: _selectedDate ?? today,
       firstDate: today,
-      lastDate: today.add(Duration(days: maxAdvanceDays)),
+      lastDate: today.add(Duration(days: maxAdvanceDays)), // 今天+明天
     );
 
     if (picked == null) return;
 
     setState(() {
       _selectedDate = picked;
-      _selectedTime = null; // 换日期时清空时间，避免时间变成“过去”
+      _selectedTime = null;
     });
   }
 
-  // 时间：在营业时间内，且如果是今天必须晚于当前时间
   Future<void> _pickTime(
     BuildContext context,
     TimeOfDay open,
@@ -107,7 +106,6 @@ class _SpaBookingPageState extends State<SpaBookingPage> {
 
     if (picked == null) return;
 
-    // 营业时间检查
     if (!_isTimeInRange(picked, open, close)) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -119,7 +117,7 @@ class _SpaBookingPageState extends State<SpaBookingPage> {
       return;
     }
 
-    // 当天不能预约过去时间
+    // 当天不能约过去时间
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final selectedDay = DateTime(
@@ -127,7 +125,6 @@ class _SpaBookingPageState extends State<SpaBookingPage> {
       _selectedDate!.month,
       _selectedDate!.day,
     );
-
     if (selectedDay == today) {
       final nowTod = TimeOfDay.fromDateTime(now);
       if (_toMinutes(picked) <= _toMinutes(nowTod)) {
@@ -143,27 +140,19 @@ class _SpaBookingPageState extends State<SpaBookingPage> {
     });
   }
 
-  // 提交按钮是否可用
-  bool _canSubmit({
-    required Map<String, dynamic> services,
-    required int minGuests,
-    required int maxGuests,
-  }) {
-    if (_selectedDate == null || _selectedTime == null) return false;
-    if (_selectedServiceKey == null) return false;
-    if (_guests < minGuests || _guests > maxGuests) return false;
-    if (!services.containsKey(_selectedServiceKey)) return false;
-    return true;
+  // 计算总价：单价 * 人数
+  double _computeTotalPrice(Map<String, dynamic> treatments) {
+    if (_selectedTreatmentKey == null) return 0.0;
+    final raw = treatments[_selectedTreatmentKey];
+    if (raw is! Map) return 0.0;
+
+    final m = Map<String, dynamic>.from(raw as Map);
+    final price = (m['price'] as num?)?.toDouble() ?? 0.0;
+    return price * _guests;
   }
 
-  // 计算总价
-  double _computeTotalPrice(Map<String, dynamic> services) {
-    if (_selectedServiceKey == null) return 0;
-    final dynamic raw = services[_selectedServiceKey];
-    if (raw is! Map<String, dynamic>) return 0;
-    final price = (raw['price'] as num?) ?? 0;
-    return price.toDouble() * _guests;
-  }
+  bool get canSubmit =>
+      _selectedDate != null && _selectedTime != null && _selectedTreatmentKey != null;
 
   // ---------- UI ----------
 
@@ -223,12 +212,9 @@ class _SpaBookingPageState extends State<SpaBookingPage> {
             }
 
             final data = snapshot.data!.data()!;
-
             final name = data['name'] as String? ?? 'Spa & Wellness';
-            final description =
-                data['description'] as String? ??
-                'Professional spa and wellness treatments.';
-            final isFree = data['isFree'] as bool? ?? false; // 这里应该是 false
+            final description = data['description'] as String? ?? '';
+            final isFree = data['isFree'] as bool? ?? false;
 
             final schedule = (data['schedule'] ?? {}) as Map<String, dynamic>;
             final openStr = schedule['open'] as String? ?? '09:00';
@@ -237,32 +223,33 @@ class _SpaBookingPageState extends State<SpaBookingPage> {
             final closeTime = _parseTimeOfDay(closeStr);
 
             final maxAdvanceDays = data['maxAdvanceDays'] as int? ?? 2;
-            final minGuests = data['minGuestsPerBooking'] as int? ?? 1;
             final maxGuests = data['maxGuestsPerBooking'] as int? ?? 4;
+            final minGuests = data['minGuestsPerBooking'] as int? ?? 1;
             final currency = data['currency'] as String? ?? 'MYR';
 
             final ui = (data['ui'] ?? {}) as Map<String, dynamic>;
             final location =
                 ui['location'] as String? ?? 'Level 2, Spa & Wellness Center';
-            final notes =
-                ui['notes'] as String? ??
+            final notes = ui['notes'] as String? ??
                 'Please arrive 10–15 minutes early for preparation.';
 
-            final services = (data['services'] ?? {}) as Map<String, dynamic>;
+            // ⭐ 关键：从 Map<dynamic, dynamic> 安全转换
+            final Map<String, dynamic> treatments =
+                Map<String, dynamic>.from(data['treatments'] ?? {});
 
-            // 初始化默认选中第一个服务
-            if (_selectedServiceKey == null && services.isNotEmpty) {
-              _selectedServiceKey = services.keys.first;
+            // 初始化默认 treatment
+            if (_selectedTreatmentKey == null && treatments.isNotEmpty) {
+              _selectedTreatmentKey = treatments.keys.first;
             }
 
-            final totalPrice = _computeTotalPrice(services);
+            final totalPrice = _computeTotalPrice(treatments);
 
             return SingleChildScrollView(
               padding: const EdgeInsets.only(bottom: 80),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // 顶部图片 + 360°
+                  // 顶部图片 + 360
                   Padding(
                     padding: const EdgeInsets.all(16),
                     child: ClipRRect(
@@ -313,7 +300,7 @@ class _SpaBookingPageState extends State<SpaBookingPage> {
                     ),
                   ),
 
-                  // 标题 + 是否免费（这里一般是收费，不会显示 Free）
+                  // 标题
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     child: Row(
@@ -322,18 +309,20 @@ class _SpaBookingPageState extends State<SpaBookingPage> {
                         Expanded(
                           child: Text(
                             name,
-                            style: Theme.of(context).textTheme.titleLarge
+                            style: Theme.of(context)
+                                .textTheme
+                                .titleLarge
                                 ?.copyWith(
                                   fontWeight: FontWeight.w800,
                                   color: _LightPalette.textPrimary,
                                 ),
                           ),
                         ),
-                        if (isFree)
+                        if (!isFree)
                           Text(
-                            'Free',
+                            'Paid Service',
                             style: TextStyle(
-                              color: Colors.green[700],
+                              color: Colors.red[700],
                               fontWeight: FontWeight.bold,
                             ),
                           ),
@@ -350,8 +339,12 @@ class _SpaBookingPageState extends State<SpaBookingPage> {
                         Expanded(
                           child: Text(
                             location,
-                            style: Theme.of(context).textTheme.bodySmall
-                                ?.copyWith(color: _LightPalette.textSecondary),
+                            style: Theme.of(context)
+                                .textTheme
+                                .bodySmall
+                                ?.copyWith(
+                                  color: _LightPalette.textSecondary,
+                                ),
                           ),
                         ),
                       ],
@@ -362,22 +355,26 @@ class _SpaBookingPageState extends State<SpaBookingPage> {
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     child: Text(
                       description,
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: _LightPalette.textSecondary,
-                      ),
+                      style: Theme.of(context)
+                          .textTheme
+                          .bodyMedium
+                          ?.copyWith(color: _LightPalette.textSecondary),
                     ),
                   ),
                   const SizedBox(height: 16),
 
-                  // Booking Details
+                  // Booking details
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     child: Text(
                       'Booking Details',
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
-                        color: _LightPalette.textPrimary,
-                      ),
+                      style: Theme.of(context)
+                          .textTheme
+                          .titleMedium
+                          ?.copyWith(
+                            fontWeight: FontWeight.bold,
+                            color: _LightPalette.textPrimary,
+                          ),
                     ),
                   ),
                   const SizedBox(height: 8),
@@ -392,7 +389,7 @@ class _SpaBookingPageState extends State<SpaBookingPage> {
                         padding: const EdgeInsets.all(16),
                         child: Column(
                           children: [
-                            // 服务类型选择（Swedish / Aromatherapy / …）
+                            // Treatment 下拉
                             Row(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
@@ -411,29 +408,36 @@ class _SpaBookingPageState extends State<SpaBookingPage> {
                                       ),
                                       const SizedBox(height: 4),
                                       DropdownButton<String>(
-                                        value: _selectedServiceKey,
+                                        value: _selectedTreatmentKey,
                                         isExpanded: true,
                                         underline: const SizedBox.shrink(),
-                                        hint: const Text('Select treatment'),
-                                        items: services.entries.map((entry) {
+                                        items: treatments.entries
+                                            .map((entry) {
                                           final key = entry.key;
-                                          final map =
-                                              entry.value
-                                                  as Map<String, dynamic>;
+                                          final m =
+                                              Map<String, dynamic>.from(
+                                                  entry.value as Map);
                                           final label =
-                                              map['label'] as String? ?? key;
+                                              m['label'] as String? ?? key;
                                           final price =
-                                              (map['price'] as num?) ?? 0;
+                                              (m['price'] as num?)
+                                                      ?.toDouble() ??
+                                                  0.0;
+                                          final duration =
+                                              m['durationMinutes'] as int? ??
+                                                  60;
                                           return DropdownMenuItem<String>(
                                             value: key,
                                             child: Text(
-                                              '$label  (${currency == 'MYR' ? 'RM' : currency} ${price.toStringAsFixed(2)})',
+                                              '$label - $currency '
+                                              '${price.toStringAsFixed(0)}'
+                                              ' • $duration min',
                                             ),
                                           );
                                         }).toList(),
                                         onChanged: (val) {
                                           setState(() {
-                                            _selectedServiceKey = val;
+                                            _selectedTreatmentKey = val;
                                           });
                                         },
                                       ),
@@ -444,17 +448,18 @@ class _SpaBookingPageState extends State<SpaBookingPage> {
                             ),
                             const Divider(height: 24),
 
-                            // 日期
+                            // Date
                             _bookingRow(
                               context: context,
                               icon: Icons.calendar_today_outlined,
                               label: 'Date',
                               value: _formatDate(_selectedDate),
-                              onTap: () => _pickDate(context, maxAdvanceDays),
+                              onTap: () =>
+                                  _pickDate(context, maxAdvanceDays),
                             ),
                             const Divider(height: 24),
 
-                            // 时间
+                            // Time
                             _bookingRow(
                               context: context,
                               icon: Icons.access_time,
@@ -467,15 +472,15 @@ class _SpaBookingPageState extends State<SpaBookingPage> {
                             ),
                             const Divider(height: 24),
 
-                            // Guests 人数
+                            // Guests
                             Row(
                               children: [
                                 const Icon(Icons.person_outline),
                                 const SizedBox(width: 12),
-                                Expanded(
+                                const Expanded(
                                   child: Text(
                                     'Guests',
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                       fontWeight: FontWeight.w500,
                                     ),
                                   ),
@@ -488,7 +493,8 @@ class _SpaBookingPageState extends State<SpaBookingPage> {
                                           });
                                         }
                                       : null,
-                                  icon: const Icon(Icons.remove_circle_outline),
+                                  icon: const Icon(
+                                      Icons.remove_circle_outline),
                                 ),
                                 Text('$_guests'),
                                 IconButton(
@@ -499,7 +505,8 @@ class _SpaBookingPageState extends State<SpaBookingPage> {
                                           });
                                         }
                                       : null,
-                                  icon: const Icon(Icons.add_circle_outline),
+                                  icon: const Icon(
+                                      Icons.add_circle_outline),
                                 ),
                               ],
                             ),
@@ -511,7 +518,7 @@ class _SpaBookingPageState extends State<SpaBookingPage> {
 
                   const SizedBox(height: 16),
 
-                  // 价格 Summary
+                  // Price summary
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     child: Card(
@@ -525,18 +532,16 @@ class _SpaBookingPageState extends State<SpaBookingPage> {
                           children: [
                             const Icon(Icons.receipt_long_outlined),
                             const SizedBox(width: 12),
-                            Expanded(
+                            const Expanded(
                               child: Text(
-                                'Total (${_guests} guest${_guests > 1 ? 's' : ''})',
-                                style: const TextStyle(
+                                'Total price',
+                                style: TextStyle(
                                   fontWeight: FontWeight.w500,
                                 ),
                               ),
                             ),
                             Text(
-                              totalPrice <= 0
-                                  ? '--'
-                                  : '${currency == 'MYR' ? 'RM' : currency} ${totalPrice.toStringAsFixed(2)}',
+                              '$currency ${totalPrice.toStringAsFixed(2)}',
                               style: const TextStyle(
                                 fontWeight: FontWeight.bold,
                               ),
@@ -549,15 +554,18 @@ class _SpaBookingPageState extends State<SpaBookingPage> {
 
                   const SizedBox(height: 16),
 
-                  // Rules & Notes
+                  // Rules & notes
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     child: Text(
                       'Rules & Notes',
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
-                        color: _LightPalette.textPrimary,
-                      ),
+                      style: Theme.of(context)
+                          .textTheme
+                          .titleMedium
+                          ?.copyWith(
+                            fontWeight: FontWeight.bold,
+                            color: _LightPalette.textPrimary,
+                          ),
                     ),
                   ),
                   const SizedBox(height: 8),
@@ -580,10 +588,7 @@ class _SpaBookingPageState extends State<SpaBookingPage> {
                               'Bookings must be within your stay dates and within opening hours.',
                             ),
                             _bullet(
-                              'Please arrive 10–15 minutes early before your session.',
-                            ),
-                            _bullet(
-                              'Guests with medical conditions should inform the therapist in advance.',
+                              'Please arrive 10–15 minutes early for consultation and preparation.',
                             ),
                             _bullet(notes),
                           ],
@@ -600,31 +605,33 @@ class _SpaBookingPageState extends State<SpaBookingPage> {
           top: false,
           child: Padding(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-            child: Builder(
-              builder: (context) {
-                // 这里为了拿到 services / guests 等状态，需要在上面的 FutureBuilder 里计算，
-                // 但我们已经在 _canSubmit 里封装了逻辑，所以在 onPressed 里只简单判断：
-                // （注意：_canSubmit 需要 services 等参数，所以我们在 FutureBuilder 里判断）
-                // 为了简单，我们直接在按钮 enable/disable 用一个布尔占位，真正逻辑在上面控制。
-                // 这里我们用一个占位的 enabled，在 FutureBuilder 内部调用时会正确传递。
-                return ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: _LightPalette.accentBlue,
-                    disabledBackgroundColor: _LightPalette.accentBlue
-                        .withOpacity(0.3),
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(24),
-                    ),
+            child: SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: _LightPalette.accentBlue,
+                  disabledBackgroundColor:
+                      _LightPalette.accentBlue.withOpacity(0.3),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(24),
                   ),
-                  onPressed: null, // 👉 真正的 enable/disable 在上面的逻辑中控制
-                  child: const Text(
-                    'Confirm Booking',
-                    style: TextStyle(fontWeight: FontWeight.w600),
-                  ),
-                );
-              },
+                ),
+                onPressed: canSubmit
+                    ? () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => const BookingSuccessPage(),
+                          ),
+                        );
+                      }
+                    : null,
+                child: const Text(
+                  'Confirm Booking',
+                  style: TextStyle(fontWeight: FontWeight.w600),
+                ),
+              ),
             ),
           ),
         ),
@@ -633,7 +640,7 @@ class _SpaBookingPageState extends State<SpaBookingPage> {
   }
 }
 
-// ---------- 公用小组件 ----------
+// ---------- shared widgets ----------
 
 Widget _bookingRow({
   required BuildContext context,
@@ -677,7 +684,6 @@ Widget _bullet(String text) {
   );
 }
 
-/// 和 ServicePage 一致的浅色调色板
 class _LightPalette {
   static const bg = Color.fromARGB(255, 222, 228, 236);
   static const textPrimary = Color(0xFF0F1722);

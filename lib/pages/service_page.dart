@@ -35,16 +35,16 @@ class ServicePage extends StatelessWidget {
         ),
         scaffoldBackgroundColor: _LightPalette.bg,
         textTheme: Theme.of(context).textTheme.apply(
-          bodyColor: _LightPalette.textPrimary,
-          displayColor: _LightPalette.textPrimary,
-        ),
+              bodyColor: _LightPalette.textPrimary,
+              displayColor: _LightPalette.textPrimary,
+            ),
       ),
       child: const _ServiceScaffold(),
     );
   }
 }
 
-class _ServiceScaffold extends StatelessWidget {
+class _ServiceScaffold extends StatefulWidget {
   const _ServiceScaffold();
 
   static const _items = <_ServiceItem>[
@@ -89,6 +89,96 @@ class _ServiceScaffold extends StatelessWidget {
       'Massages, treatments, and serene recovery experiences.',
     ),
   ];
+
+  @override
+  State<_ServiceScaffold> createState() => _ServiceScaffoldState();
+}
+
+class _ServiceScaffoldState extends State<_ServiceScaffold> {
+  /// ✅ 浮动 GIF 助手机器人状态
+  bool _showAssistant = true;
+  Offset _assistantOffset = const Offset(16, 140);
+  bool _initializedOffset = false; // 是否已经按屏幕宽度设置起始位置
+
+  /// ✅ 浮在最上层的可拖动 GIF 助手（起始在右侧）
+  Widget _buildFloatingAssistant(BuildContext context) {
+    final size = MediaQuery.of(context).size;
+
+    const double avatarWidth = 140;
+    const double avatarHeight = 140;
+
+    // 第一次构建时，把起始位置设到右侧：距右 16，距上 140
+    if (!_initializedOffset) {
+      _assistantOffset = Offset(
+        size.width - avatarWidth - 6,
+        520,
+      );
+      _initializedOffset = true;
+    }
+
+    // 限制不让拖出屏幕
+    final double left = _assistantOffset.dx.clamp(
+      0.0,
+      size.width - avatarWidth,
+    );
+    final double top = _assistantOffset.dy.clamp(
+      0.0,
+      size.height - avatarHeight - MediaQuery.of(context).padding.top,
+    );
+
+    return Positioned(
+      left: left,
+      top: top,
+      child: GestureDetector(
+        onPanUpdate: (details) {
+          setState(() {
+            _assistantOffset += details.delta;
+          });
+        },
+        child: SizedBox(
+          width: avatarWidth,
+          height: avatarHeight,
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              // 直接放 GIF（这里暂时用 final2，你之后可以换成 service 专属）
+              Positioned.fill(
+                child: Image.asset(
+                  'assets/gifs/final2.gif',
+                  fit: BoxFit.contain,
+                ),
+              ),
+              // 右上角小的关闭按钮
+              Positioned(
+                right: -4,
+                top: -4,
+                child: GestureDetector(
+                  onTap: () {
+                    setState(() {
+                      _showAssistant = false;
+                    });
+                  },
+                  child: Container(
+                    width: 20,
+                    height: 20,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Colors.black.withOpacity(0.6),
+                    ),
+                    child: const Icon(
+                      Icons.close,
+                      size: 14,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -157,18 +247,28 @@ class _ServiceScaffold extends StatelessWidget {
           child: Container(height: 0.5, color: Colors.white.withOpacity(0.08)),
         ),
       ),
-      body: ListView.separated(
-        physics: const BouncingScrollPhysics(),
-        padding: EdgeInsets.fromLTRB(20, 8, 20, bottomPadding),
-        itemCount: _items.length,
-        separatorBuilder: (_, __) => const SizedBox(height: 12),
-        itemBuilder: (context, index) {
-          final item = _items[index];
-          return _AnimatedAppear(
-            delayMs: 70 * index,
-            child: _ServiceListCard(item: item),
-          );
-        },
+      body: SafeArea(
+        child: Stack(
+          children: [
+            // 原来的服务列表
+            ListView.separated(
+              physics: const BouncingScrollPhysics(),
+              padding: EdgeInsets.fromLTRB(20, 8, 20, bottomPadding),
+              itemCount: _ServiceScaffold._items.length,
+              separatorBuilder: (_, __) => const SizedBox(height: 12),
+              itemBuilder: (context, index) {
+                final item = _ServiceScaffold._items[index];
+                return _AnimatedAppear(
+                  delayMs: 70 * index,
+                  child: _ServiceListCard(item: item),
+                );
+              },
+            ),
+
+            // 顶层：可拖动 GIF 助手
+            if (_showAssistant) _buildFloatingAssistant(context),
+          ],
+        ),
       ),
     );
   }
@@ -275,7 +375,9 @@ class _ServiceListCardState extends State<_ServiceListCard> {
                         ),
                       ),
                     ),
-                    Center(child: Icon(item.icon, color: iconColor, size: 26)),
+                    Center(
+                        child:
+                            Icon(item.icon, color: iconColor, size: 26)),
                   ],
                 ),
               ),
@@ -339,7 +441,8 @@ class _ServiceListCardState extends State<_ServiceListCard> {
                             Navigator.push(
                               context,
                               MaterialPageRoute(
-                                builder: (_) => const HousekeepingBookingPage(),
+                                builder: (_) =>
+                                    const HousekeepingBookingPage(),
                               ),
                             );
                           } else if (item.label == 'Laundry & Ironing') {
@@ -375,18 +478,17 @@ class _ServiceListCardState extends State<_ServiceListCard> {
                             _snack(context, 'Coming soon: ${item.label}');
                           }
                         },
-
                         child: Container(
                           height: 28,
-                          padding: const EdgeInsets.symmetric(horizontal: 10),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10),
                           decoration: BoxDecoration(
                             color: _LightPalette.accentBlue,
                             borderRadius: BorderRadius.circular(8),
                             boxShadow: [
                               BoxShadow(
-                                color: _LightPalette.accentBlue.withOpacity(
-                                  .24,
-                                ),
+                                color: _LightPalette.accentBlue
+                                    .withOpacity(.24),
                                 blurRadius: 10,
                                 offset: const Offset(0, 5),
                               ),
@@ -426,8 +528,10 @@ class _ServiceItem {
 }
 
 class _LightPalette {
-  static const bg = Color.fromARGB(255, 222, 228, 236); // near-white blue-gray
-  static const textPrimary = Color(0xFF0F1722); // deep slate (pairs with bar)
+  static const bg =
+      Color.fromARGB(255, 222, 228, 236); // near-white blue-gray
+  static const textPrimary =
+      Color(0xFF0F1722); // deep slate (pairs with bar)
   static const textSecondary = Color(0xFF5A6473);
   static const icon = Color(0xFF1F2A44);
   static const iconBg = Color(0xFFF0F4F9);

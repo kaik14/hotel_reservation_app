@@ -417,8 +417,8 @@ class _SearchPageState extends State<SearchPage> {
     // 🔰 第一次构建时，把起始位置设到右侧：距右 16，距上 140
     if (!_initializedOffset) {
       _assistantOffset = Offset(
-        size.width - avatarWidth - 16,
-        140,
+        size.width - avatarWidth - 1,
+        80,
       );
       _initializedOffset = true;
     }
