@@ -44,6 +44,11 @@ class _SearchPageState extends State<SearchPage> {
   /// ✅ 默认推荐房型
   final List<String> defaultRecommendedIDs = ['R02', 'R04', 'R07'];
 
+  /// ✅ 浮动 GIF 助手机器人状态
+  bool _showAssistant = true;
+  Offset _assistantOffset = const Offset(16, 140);
+  bool _initializedOffset = false; // 👈 新增：是否已经按屏幕宽度设置起始位置
+
   @override
   void initState() {
     super.initState();
@@ -369,7 +374,7 @@ class _SearchPageState extends State<SearchPage> {
     );
   }
 
-  /// ✅ 单个日期“按钮”（配色已改为浅蓝灰系；内部不设外边距，方便在一行排布）
+  /// ✅ 单个日期“按钮”
   Widget _dateButton(String label, DateTime? date, VoidCallback onTap) {
     return GestureDetector(
       onTap: onTap,
@@ -391,15 +396,93 @@ class _SearchPageState extends State<SearchPage> {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            // 左侧标签
             Text(
               label, // 'Check-in' / 'Check-out'
               style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
             ),
-
-            // 右侧仅保留日历图标（黑色）
             const Icon(Icons.calendar_today, size: 18, color: Colors.black),
           ],
+        ),
+      ),
+    );
+  }
+
+    /// ✅ 浮在最上层的可拖动 GIF 助手（起始在右侧）
+  Widget _buildFloatingAssistant(BuildContext context) {
+    final size = MediaQuery.of(context).size;
+
+    const double avatarWidth = 150;
+    const double avatarHeight = 150;
+
+    // 🔰 第一次构建时，把起始位置设到右侧：距右 16，距上 140
+    if (!_initializedOffset) {
+      _assistantOffset = Offset(
+        size.width - avatarWidth - 16,
+        140,
+      );
+      _initializedOffset = true;
+    }
+
+    // 限制不让拖出屏幕
+    final double left = _assistantOffset.dx.clamp(
+      0.0,
+      size.width - avatarWidth,
+    );
+    final double top = _assistantOffset.dy.clamp(
+      0.0,
+      size.height - avatarHeight - MediaQuery.of(context).padding.top,
+    );
+
+    return Positioned(
+      left: left,
+      top: top,
+      child: GestureDetector(
+        onPanUpdate: (details) {
+          setState(() {
+            _assistantOffset += details.delta;
+          });
+        },
+        child: SizedBox(
+          width: avatarWidth,
+          height: avatarHeight,
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              // 直接放 GIF
+              Positioned.fill(
+                child: Image.asset(
+                  'assets/gifs/final4.gif', // 👈 Search 页面用的 GIF
+                  fit: BoxFit.contain,
+                ),
+              ),
+
+              // 右上角小的关闭按钮
+              Positioned(
+                right: 40,
+                top: -4,
+                child: GestureDetector(
+                  onTap: () {
+                    setState(() {
+                      _showAssistant = false;
+                    });
+                  },
+                  child: Container(
+                    width: 20,
+                    height: 20,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Colors.black.withOpacity(0.6),
+                    ),
+                    child: const Icon(
+                      Icons.close,
+                      size: 14,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -416,8 +499,7 @@ class _SearchPageState extends State<SearchPage> {
       backgroundColor: _Brand.bg,
 
       appBar: AppBar(
-        backgroundColor:
-            _Brand.bar, // 为了防止 _Brand 报错，我先用了深色背景，你也可以换回 _Brand.bar
+        backgroundColor: _Brand.bar,
         elevation: 0,
         centerTitle: false,
         titleSpacing: 20,
@@ -435,7 +517,6 @@ class _SearchPageState extends State<SearchPage> {
           builder: (context, snapshot) {
             String firstName = 'Guest';
 
-            // 如果获取到了数据，就更新名字
             if (snapshot.hasData &&
                 snapshot.data != null &&
                 snapshot.data!.exists) {
@@ -447,7 +528,7 @@ class _SearchPageState extends State<SearchPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Hi, $firstName', // 动态显示名字
+                  'Hi, $firstName',
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 24,
@@ -475,91 +556,144 @@ class _SearchPageState extends State<SearchPage> {
       ),
 
       body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // —— Check-in / Check-out 并排一行 —— //
-              Row(
+        child: Stack(
+          children: [
+            // 底层：原来的可滚动内容
+            SingleChildScrollView(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Expanded(
-                    child: _dateButton(
-                      'Check-in',
-                      _checkInDate,
-                      () => _selectDate(context, true),
-                    ),
+                  // —— Check-in / Check-out 并排一行 —— //
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _dateButton(
+                          'Check-in',
+                          _checkInDate,
+                          () => _selectDate(context, true),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _dateButton(
+                          'Check-out',
+                          _checkOutDate,
+                          () => _selectDate(context, false),
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: _dateButton(
-                      'Check-out',
-                      _checkOutDate,
-                      () => _selectDate(context, false),
-                    ),
+
+                  const SizedBox(height: 16),
+
+                  /// ✅ 搜索栏（按钮改为品牌蓝）
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          child: TextField(
+                            controller: _searchController,
+                            decoration: const InputDecoration(
+                              border: InputBorder.none,
+                              hintText: 'Search By Room Name Or Description',
+                            ),
+                            onChanged: (v) =>
+                                setState(() => _searchKeyword = v.toLowerCase()),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Container(
+                        height: 46,
+                        width: 46,
+                        decoration: BoxDecoration(
+                          color: _Brand.accent, // ← 品牌蓝
+                          borderRadius: BorderRadius.circular(14),
+                          boxShadow: [
+                            BoxShadow(
+                              color: _Brand.accent.withOpacity(.25),
+                              blurRadius: 12,
+                              offset: const Offset(0, 6),
+                            ),
+                          ],
+                        ),
+                        child: const Icon(Icons.search, color: Colors.white),
+                      ),
+                    ],
                   ),
+
+                  const SizedBox(height: 28),
+
+                  if (_searchKeyword.isNotEmpty) ...[
+                    const Text(
+                      "Search Results",
+                      style:
+                          TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 12),
+                    _buildSearchResults(),
+                  ] else ...[
+                    _recommendedSection(),
+                    const SizedBox(height: 28),
+                    _popularSection(),
+                  ],
                 ],
               ),
+            ),
 
-              const SizedBox(height: 16),
+            // 顶层：可拖动、可关闭的 GIF 助手机器人
+            if (_showAssistant) _buildFloatingAssistant(context),
 
-              /// ✅ 搜索栏（按钮改为品牌蓝）
-              Row(
-                children: [
-                  Expanded(
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                      child: TextField(
-                        controller: _searchController,
-                        decoration: const InputDecoration(
-                          border: InputBorder.none,
-                          hintText: 'Search By Room Name Or Description',
-                        ),
-                        onChanged: (v) =>
-                            setState(() => _searchKeyword = v.toLowerCase()),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Container(
-                    height: 46,
-                    width: 46,
+            // 关闭后右下角召回按钮
+            if (!_showAssistant)
+              Positioned(
+                right: 16,
+                bottom: 16,
+                child: GestureDetector(
+                  onTap: () {
+                    setState(() {
+                      _showAssistant = true;
+                    });
+                  },
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                     decoration: BoxDecoration(
-                      color: _Brand.accent, // ← 品牌蓝
-                      borderRadius: BorderRadius.circular(14),
+                      color: _Brand.accent,
+                      borderRadius: BorderRadius.circular(20),
                       boxShadow: [
                         BoxShadow(
-                          color: _Brand.accent.withOpacity(.25),
-                          blurRadius: 12,
-                          offset: const Offset(0, 6),
+                          color: _Brand.accent.withOpacity(0.3),
+                          blurRadius: 8,
+                          offset: const Offset(0, 4),
                         ),
                       ],
                     ),
-                    child: const Icon(Icons.search, color: Colors.white),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.pets, size: 16, color: Colors.white),
+                        SizedBox(width: 6),
+                        Text(
+                          'Assistant',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.white,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                ],
-              ),
-
-              const SizedBox(height: 28),
-
-              if (_searchKeyword.isNotEmpty) ...[
-                const Text(
-                  "Search Results",
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                 ),
-                const SizedBox(height: 12),
-                _buildSearchResults(),
-              ] else ...[
-                _recommendedSection(),
-                const SizedBox(height: 28),
-                _popularSection(),
-              ],
-            ],
-          ),
+              ),
+          ],
         ),
       ),
     );

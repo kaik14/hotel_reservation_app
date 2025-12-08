@@ -141,23 +141,25 @@ class _RoomMapPageState extends State<RoomMapPage> {
               children: [
                 const SizedBox(height: 12),
 
-                // 中间白色卡片
                 Expanded(
-                  child: Center(
-                    child: Container(
-                      margin: const EdgeInsets.symmetric(horizontal: 16),
-                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(24),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.18),
-                            blurRadius: 18,
-                            offset: const Offset(0, 9),
-                          ),
-                        ],
-                      ),
+  child: Align(
+    alignment: Alignment.topCenter, // 顶部居中
+    child: Padding(
+      padding: const EdgeInsets.only(top: 246), // 往下 24px，数值越大越靠下
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 0),
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(24),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.18),
+              blurRadius: 18,
+              offset: const Offset(0, 9),
+            ),
+          ],
+        ),
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -196,7 +198,7 @@ class _RoomMapPageState extends State<RoomMapPage> {
                     ),
                   ),
                 ),
-
+                ),
                 // 底部确认按钮
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),

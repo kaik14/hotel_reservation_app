@@ -23,7 +23,12 @@ class _SlideTransitionNotificationState extends State<SlideTransitionNotificatio
   void initState() {
     super.initState();
     _controller = AnimationController(vsync: this, duration: const Duration(milliseconds: 500));
-    _offsetAnimation = Tween<Offset>(begin: const Offset(0, -1.5), end: const Offset(0, 0)).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOutBack));
+    _offsetAnimation = Tween<Offset>(
+      begin: const Offset(0, -1.5),
+      end: const Offset(0, 0),
+    ).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeOutBack),
+    );
     _controller.forward();
   }
 
@@ -41,7 +46,12 @@ class _SlideTransitionNotificationState extends State<SlideTransitionNotificatio
             children: [
               const Icon(Icons.notifications_active, color: Colors.white),
               const SizedBox(width: 12),
-              Expanded(child: Text(widget.message, style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w600))),
+              Expanded(
+                child: Text(
+                  widget.message,
+                  style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w600),
+                ),
+              ),
             ],
           ),
         ),
@@ -55,7 +65,6 @@ class _SlideTransitionNotificationState extends State<SlideTransitionNotificatio
     super.dispose();
   }
 }
-
 
 class _Brand {
   static const bg = Color.fromARGB(255, 222, 228, 236);
@@ -78,6 +87,11 @@ class BookingDetailPage extends StatefulWidget {
 }
 
 class _BookingDetailPageState extends State<BookingDetailPage> {
+  /// ✅ 浮动 GIF 助手机器人状态
+  bool _showAssistant = true;
+  Offset _assistantOffset = const Offset(16, 140);
+
+  bool _initializedOffset = false;  // 👈 新增：是否已经根据屏幕宽度设置过起始位置
 
   // ✅✅✅ Using the CORRECT Refund Logic ✅✅✅
   Future<void> _handleCancelBooking(String bookingId, DateTime checkInDate) async {
@@ -99,9 +113,8 @@ class _BookingDetailPageState extends State<BookingDetailPage> {
           .delete();
 
       _showTopNotification("Booking cancelled and refund processed successfully.", Colors.green);
-      
-      if(mounted) Navigator.of(context).pop();
 
+      if (mounted) Navigator.of(context).pop();
     } catch (e) {
       _showTopNotification("An error occurred while cancelling: $e", Colors.red);
     }
@@ -124,7 +137,6 @@ class _BookingDetailPageState extends State<BookingDetailPage> {
       overlayEntry.remove();
     });
   }
-
 
   @override
   Widget build(BuildContext context) {
@@ -153,9 +165,91 @@ class _BookingDetailPageState extends State<BookingDetailPage> {
     );
   }
 
+    /// ✅ 浮在最上层的可拖动 GIF 助手（起始在右侧）
+  Widget _buildFloatingAssistant(BuildContext context) {
+    final size = MediaQuery.of(context).size;
+
+    const double avatarWidth = 160;
+    const double avatarHeight = 160;
+
+    // 🔰 第一次构建时，把起始位置设到右侧，距右边 16、距顶部 140
+    if (!_initializedOffset) {
+      _assistantOffset = Offset(
+        size.width - avatarWidth - 16,
+        140,
+      );
+      _initializedOffset = true;
+    }
+
+    // 限制不让拖出屏幕
+    final double left = _assistantOffset.dx.clamp(
+      0.0,
+      size.width - avatarWidth,
+    );
+    final double top = _assistantOffset.dy.clamp(
+      0.0,
+      size.height - avatarHeight - MediaQuery.of(context).padding.top,
+    );
+
+    return Positioned(
+      left: left,
+      top: top,
+      child: GestureDetector(
+        onPanUpdate: (details) {
+          setState(() {
+            _assistantOffset += details.delta;
+          });
+        },
+        child: SizedBox(
+          width: avatarWidth,
+          height: avatarHeight,
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              // 直接放 GIF
+              Positioned.fill(
+                child: Image.asset(
+                  'assets/gifs/final3.gif', // 👈 booking detail 用的 GIF
+                  fit: BoxFit.contain,
+                ),
+              ),
+
+              // 右上角小的关闭按钮
+              Positioned(
+                right: 40,
+                top: -4,
+                child: GestureDetector(
+                  onTap: () {
+                    setState(() {
+                      _showAssistant = false;
+                    });
+                  },
+                  child: Container(
+                    width: 20,
+                    height: 20,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Colors.black.withOpacity(0.6),
+                    ),
+                    child: const Icon(
+                      Icons.close,
+                      size: 14,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+
   Widget _buildDetailUI(BuildContext context, Map<String, dynamic> data) {
-     final checkIn = (data['checkIn'] as Timestamp?)?.toDate();
-     final isCheckedIn = checkIn != null && checkIn.isBefore(DateTime.now());
+    final checkIn = (data['checkIn'] as Timestamp?)?.toDate();
+    final isCheckedIn = checkIn != null && checkIn.isBefore(DateTime.now());
 
     // Re-declaring all the variables from the original code to ensure correctness
     final price = data['priceText'] ?? "RM -";
@@ -167,7 +261,8 @@ class _BookingDetailPageState extends State<BookingDetailPage> {
     final guests = data['guests'] ?? 1;
     final roomNo = data['roomNo'] ?? '-';
     final title = data['roomTypeTitle'] ?? 'Room';
-    final nights = data['nights'] ?? (checkIn != null && checkOut != null ? checkOut.difference(checkIn).inDays : 1);
+    final nights = data['nights'] ??
+        (checkIn != null && checkOut != null ? checkOut.difference(checkIn).inDays : 1);
     final dateFmt = DateFormat('dd MMM yyyy');
     final createdFmt = DateFormat('dd MMM yyyy – HH:mm');
     final bottomSafe = MediaQuery.of(context).padding.bottom;
@@ -180,7 +275,7 @@ class _BookingDetailPageState extends State<BookingDetailPage> {
         centerTitle: false,
         titleSpacing: 8,
         toolbarHeight: 97,
-        systemOverlayStyle: SystemUiOverlayStyle(
+        systemOverlayStyle: const SystemUiOverlayStyle(
           statusBarColor: _Brand.bar,
           statusBarIconBrightness: Brightness.light,
           statusBarBrightness: Brightness.dark,
@@ -191,12 +286,27 @@ class _BookingDetailPageState extends State<BookingDetailPage> {
           onPressed: () => Navigator.maybePop(context),
           tooltip: 'Back',
         ),
-        title: Column(
+        title: const Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Booking Details', style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w800, letterSpacing: -0.2)),
+            Text(
+              'Booking Details',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 24,
+                fontWeight: FontWeight.w800,
+                letterSpacing: -0.2,
+              ),
+            ),
             SizedBox(height: 4),
-            Text('Review and manage your reservation.', style: TextStyle(color: Color(0x99FFFFFF), fontSize: 13, fontWeight: FontWeight.w500)),
+            Text(
+              'Review and manage your reservation.',
+              style: TextStyle(
+                color: Color(0x99FFFFFF),
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
           ],
         ),
       ),
@@ -204,93 +314,170 @@ class _BookingDetailPageState extends State<BookingDetailPage> {
         height: 75 + bottomSafe,
         decoration: const BoxDecoration(color: _Brand.bar),
       ),
-       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Container(
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(16),
-            boxShadow: const [BoxShadow(color: Color(0x14000000), blurRadius: 16, offset: Offset(0, 8))],
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start, 
-            children: [
-              ClipRRect(
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-                child: Image.asset(imagePath, height: 220, width: double.infinity, fit: BoxFit.cover),
-              ),
-              Padding(
-                padding: const EdgeInsets.all(16),
+      body: SafeArea(
+        child: Stack(
+          children: [
+            // 底层：原来的可滚动内容
+            SingleChildScrollView(
+              padding: const EdgeInsets.all(16),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Color(0x14000000),
+                      blurRadius: 16,
+                      offset: Offset(0, 8),
+                    )
+                  ],
+                ),
                 child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start, 
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(title, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 4),
-                    Text(price, style: const TextStyle(fontSize: 15, color: Colors.grey)),
-                    const SizedBox(height: 10),
-                    if (desc.isNotEmpty) Text(desc, style: const TextStyle(fontSize: 15, height: 1.5)),
-                    const SizedBox(height: 14),
-                    _infoRow("Room No", roomNo),
-                    _infoRow("Guests", "$guests"),
-                    _infoRow("Check-in", checkIn != null ? dateFmt.format(checkIn) : "-"),
-                    _infoRow("Check-out", checkOut != null ? dateFmt.format(checkOut) : "-"),
-                    _infoRow("Nights", "$nights"),
-                    _infoRow("Created", createdAt != null ? createdFmt.format(createdAt) : "-"),
-                    const SizedBox(height: 20),
-                    if (!isCheckedIn)
-                      Row(
+                    ClipRRect(
+                      borderRadius:
+                          const BorderRadius.vertical(top: Radius.circular(16)),
+                      child: Image.asset(
+                        imagePath,
+                        height: 220,
+                        width: double.infinity,
+                        fit: BoxFit.cover,
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Expanded(
-                            child: ElevatedButton.icon(
-                              icon: const Icon(Icons.edit_calendar_outlined, color: Colors.white),
-                              label: const Text("Edit Booking", style: TextStyle(color: Colors.white)),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: _Brand.accent,
-                                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                                shadowColor: _Brand.accent.withOpacity(.25),
-                                elevation: 4,
-                                minimumSize: const Size(0, 48),
-                              ),
-                              onPressed: () {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) => BookingEditPage(bookingId: widget.bookingId, data: data),
-                                  ),
-                                );
-                              },
-                            ),
+                          Text(
+                            title,
+                            style: const TextStyle(
+                                fontSize: 20, fontWeight: FontWeight.bold),
                           ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: ElevatedButton.icon(
-                                    icon: const Icon(Icons.cancel_outlined, color: Colors.white),
-                                    label: const Text("Cancel Booking", style: TextStyle(color: Colors.white)),
+                          const SizedBox(height: 4),
+                          Text(
+                            price,
+                            style: const TextStyle(
+                                fontSize: 15, color: Colors.grey),
+                          ),
+                          const SizedBox(height: 10),
+                          if (desc.isNotEmpty)
+                            Text(
+                              desc,
+                              style: const TextStyle(
+                                  fontSize: 15, height: 1.5),
+                            ),
+                          const SizedBox(height: 14),
+                          _infoRow("Room No", roomNo),
+                          _infoRow("Guests", "$guests"),
+                          _infoRow(
+                            "Check-in",
+                            checkIn != null ? dateFmt.format(checkIn) : "-",
+                          ),
+                          _infoRow(
+                            "Check-out",
+                            checkOut != null ? dateFmt.format(checkOut) : "-",
+                          ),
+                          _infoRow("Nights", "$nights"),
+                          _infoRow(
+                            "Created",
+                            createdAt != null
+                                ? createdFmt.format(createdAt)
+                                : "-",
+                          ),
+                          const SizedBox(height: 20),
+                          if (!isCheckedIn)
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: ElevatedButton.icon(
+                                    icon: const Icon(
+                                      Icons.edit_calendar_outlined,
+                                      color: Colors.white,
+                                    ),
+                                    label: const Text(
+                                      "Edit Booking",
+                                      style: TextStyle(color: Colors.white),
+                                    ),
                                     style: ElevatedButton.styleFrom(
-                                      backgroundColor: Colors.red[700], 
-                                      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                                      backgroundColor: _Brand.accent,
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 18, vertical: 12),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius:
+                                            BorderRadius.circular(14),
+                                      ),
+                                      shadowColor:
+                                          _Brand.accent.withOpacity(.25),
                                       elevation: 4,
                                       minimumSize: const Size(0, 48),
                                     ),
                                     onPressed: () {
-                                        showDialog(
+                                      Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (_) => BookingEditPage(
+                                            bookingId: widget.bookingId,
+                                            data: data,
+                                          ),
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: ElevatedButton.icon(
+                                    icon: const Icon(
+                                      Icons.cancel_outlined,
+                                      color: Colors.white,
+                                    ),
+                                    label: const Text(
+                                      "Cancel Booking",
+                                      style: TextStyle(color: Colors.white),
+                                    ),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: Colors.red[700],
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 18, vertical: 12),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius:
+                                            BorderRadius.circular(14),
+                                      ),
+                                      elevation: 4,
+                                      minimumSize: const Size(0, 48),
+                                    ),
+                                    onPressed: () {
+                                      showDialog(
                                         context: context,
-                                        builder: (BuildContext dialogContext) {
+                                        builder:
+                                            (BuildContext dialogContext) {
                                           return AlertDialog(
-                                            title: const Text('Confirm Cancellation'),
-                                            content: const Text('Are you sure you want to cancel this booking?'),
+                                            title: const Text(
+                                                'Confirm Cancellation'),
+                                            content: const Text(
+                                                'Are you sure you want to cancel this booking?'),
                                             actions: <Widget>[
                                               TextButton(
                                                 child: const Text('Back'),
-                                                onPressed: () => Navigator.of(dialogContext).pop(),
+                                                onPressed: () =>
+                                                    Navigator.of(
+                                                            dialogContext)
+                                                        .pop(),
                                               ),
                                               TextButton(
-                                                child: const Text('Confirm', style: TextStyle(color: Colors.red)),
+                                                child: const Text(
+                                                  'Confirm',
+                                                  style: TextStyle(
+                                                      color: Colors.red),
+                                                ),
                                                 onPressed: () {
-                                                  Navigator.of(dialogContext).pop();
-                                                  _handleCancelBooking(widget.bookingId, checkIn!);
+                                                  Navigator.of(dialogContext)
+                                                      .pop();
+                                                  _handleCancelBooking(
+                                                      widget.bookingId,
+                                                      checkIn!);
                                                 },
                                               ),
                                             ],
@@ -299,22 +486,73 @@ class _BookingDetailPageState extends State<BookingDetailPage> {
                                       );
                                     },
                                   ),
-                          ),
+                                ),
+                              ],
+                            ),
+                          if (isCheckedIn)
+                            const Padding(
+                              padding: EdgeInsets.only(top: 6),
+                              child: Text(
+                                "Checked-in bookings cannot be modified or cancelled.",
+                                style:
+                                    TextStyle(color: Colors.grey),
+                              ),
+                            ),
                         ],
                       ),
-                    if (isCheckedIn)
-                      const Padding(
-                        padding: EdgeInsets.only(top: 6),
-                        child: Text(
-                          "Checked-in bookings cannot be modified or cancelled.",
-                          style: TextStyle(color: Colors.grey),
-                        ),
-                      ),
+                    ),
                   ],
                 ),
               ),
-            ],
-          ),
+            ),
+
+            // 浮动 GIF 助手
+            if (_showAssistant) _buildFloatingAssistant(context),
+
+            // 关闭后右下角召回按钮
+            if (!_showAssistant)
+              Positioned(
+                right: 16,
+                bottom: 16,
+                child: GestureDetector(
+                  onTap: () {
+                    setState(() {
+                      _showAssistant = true;
+                    });
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 10, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: _Brand.accent,
+                      borderRadius: BorderRadius.circular(20),
+                      boxShadow: [
+                        BoxShadow(
+                          color: _Brand.accent.withOpacity(0.3),
+                          blurRadius: 8,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.pets, size: 16, color: Colors.white),
+                        SizedBox(width: 6),
+                        Text(
+                          'Assistant',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.white,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+          ],
         ),
       ),
     );
@@ -326,8 +564,12 @@ class _BookingDetailPageState extends State<BookingDetailPage> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
-          Text(value, style: const TextStyle(color: Colors.black87, fontSize: 14)),
+          Text(label,
+              style: const TextStyle(
+                  fontWeight: FontWeight.w600, fontSize: 14)),
+          Text(value,
+              style: const TextStyle(
+                  color: Colors.black87, fontSize: 14)),
         ],
       ),
     );

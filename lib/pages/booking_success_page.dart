@@ -1,10 +1,11 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:hotel_reservation_app/data/info_data.dart';
 import 'package:hotel_reservation_app/app_shell.dart';
 import 'package:intl/intl.dart';
+import 'package:video_player/video_player.dart';
 
 class BookingSuccessPage extends StatefulWidget {
-  // ✅ 1. 之前是 message，现在换成接收支付金额
+  // 支付金额（分）
   final int? paidAmount;
 
   const BookingSuccessPage({super.key, this.paidAmount});
@@ -19,20 +20,38 @@ class _BookingSuccessPageState extends State<BookingSuccessPage>
   late Animation<double> _scaleAnimation;
   OverlayEntry? _overlayEntry;
 
+  Timer? _redirectTimer;
+
+  // 🔥 视频控制器
+  late VideoPlayerController _videoController;
+  bool _videoInitialized = false;
+
   @override
   void initState() {
     super.initState();
 
+    // 1. 初始化前景缩放动画
     _controller = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 800),
     );
     _scaleAnimation =
         CurvedAnimation(parent: _controller, curve: Curves.elasticOut);
-
     _controller.forward();
 
-    // ✅ 2. 如果传递了支付金额，就显示支付成功通知
+    // 2. 初始化背景视频
+    _videoController = VideoPlayerController.asset(
+      'assets/videos/booking_success.mp4', // 👈 换成你自己的视频路径
+    )
+      ..setLooping(true)
+      ..setVolume(0.0)
+      ..initialize().then((_) {
+        if (!mounted) return;
+        setState(() => _videoInitialized = true);
+        _videoController.play();
+      });
+
+    // 3. 顶部支付成功通知
     Future.delayed(const Duration(milliseconds: 300), () {
       if (widget.paidAmount != null && mounted) {
         final amountFormatted = NumberFormat.currency(
@@ -48,17 +67,19 @@ class _BookingSuccessPageState extends State<BookingSuccessPage>
       }
     });
 
-    Future.delayed(const Duration(seconds: 4), () {
+    // 4. 5 秒后跳回 Search（AppShell index 0）
+    _redirectTimer = Timer(const Duration(seconds: 3), () {
       if (!mounted) return;
       Navigator.pushAndRemoveUntil(
         context,
-        MaterialPageRoute(builder: (_) => const AppShell(initialIndex: 0)),
+        MaterialPageRoute(
+          builder: (_) => const AppShell(initialIndex: 0),
+        ),
         (route) => false,
       );
     });
   }
 
-  /// ✅ 3. 改造通知函数，让它可以显示不同的消息和颜色
   void _showTopNotification(BuildContext context, String message, Color color) {
     _overlayEntry = OverlayEntry(
       builder: (context) => Positioned(
@@ -79,49 +100,88 @@ class _BookingSuccessPageState extends State<BookingSuccessPage>
 
   @override
   void dispose() {
+    _redirectTimer?.cancel();
     _controller.dispose();
     _overlayEntry?.remove();
+    _videoController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    // ... (UI 部分保持不变)
     return Scaffold(
-      backgroundColor: Colors.white,
-      body: Center(
-        child: ScaleTransition(
-          scale: _scaleAnimation,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: const [
-              Icon(Icons.check_circle, color: Colors.green, size: 100),
-              SizedBox(height: 20),
-              Text(
-                "Booking Successful!",
-                style: TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.black87),
+      backgroundColor: Colors.black,
+      body: Stack(
+        children: [
+          // 1️⃣ 背景视频（铺满全屏）
+          if (_videoInitialized)
+            Positioned.fill(
+              child: FittedBox(
+                fit: BoxFit.cover,
+                child: SizedBox(
+                  width: _videoController.value.size.width,
+                  height: _videoController.value.size.height,
+                  child: VideoPlayer(_videoController),
+                ),
               ),
-              SizedBox(height: 8),
-              Text(
-                "Your reservation has been confirmed.",
-                style: TextStyle(color: Colors.grey),
-              ),
-            ],
+            )
+          else
+            // 视频没加载好时的占位背景
+            const Positioned.fill(
+              child: Center(child: CircularProgressIndicator()),
+            ),
+
+          // 2️⃣ 半透明黑色遮罩，让文字更清晰
+          Positioned.fill(
+            child: Container(
+              color: Colors.black.withOpacity(0.35),
+            ),
           ),
-        ),
+
+          // 3️⃣ 前景内容：图标 + 文本，居中放在最上层
+          SafeArea(
+            child: Center(
+              child: ScaleTransition(
+                scale: _scaleAnimation,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: const [
+                    Icon(Icons.check_circle,
+                        color: Colors.white, size: 100),
+                    SizedBox(height: 20),
+                    Text(
+                      "Booking Successful!",
+                      style: TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                    SizedBox(height: 8),
+                    Text(
+                      "Your reservation has been confirmed.",
+                      style: TextStyle(color: Colors.white70),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
 }
 
-// ✅ 4. 改造通知的 Widget，让它可以自定义消息和背景色
+// 顶部滑入通知
 class SlideTransitionNotification extends StatefulWidget {
   final String message;
   final Color color;
-  const SlideTransitionNotification({super.key, required this.message, required this.color});
+  const SlideTransitionNotification({
+    super.key,
+    required this.message,
+    required this.color,
+  });
 
   @override
   State<SlideTransitionNotification> createState() =>
@@ -170,7 +230,11 @@ class _SlideTransitionNotificationState
               Expanded(
                 child: Text(
                   widget.message,
-                  style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w600),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
             ],
