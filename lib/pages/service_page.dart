@@ -2,7 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'; // ← 用于设置状态栏图标/文字颜色
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:hotel_reservation_app/pages/conference_hall_booking_page.dart';
 import 'package:hotel_reservation_app/services/database_service.dart';
+import 'package:hotel_reservation_app/pages/housekeeping_booking_page.dart';
+import 'package:hotel_reservation_app/pages/laundry_booking_page.dart';
+
+// ⭐ 新增：导入 SwimmingBookingPage、GymBookingPage（注意路径）
+import 'package:hotel_reservation_app/pages/swimming_booking_page.dart';
+import 'package:hotel_reservation_app/pages/gym_booking_page.dart';
 
 /// Ultra-minimal, single-column Services page.
 /// - Light theme to pair with the dark bottom bar in AppShell
@@ -147,7 +154,6 @@ class _ServiceScaffold extends StatelessWidget {
           child: Container(height: 0.5, color: Colors.white.withOpacity(0.08)),
         ),
       ),
-    
       body: ListView.separated(
         physics: const BouncingScrollPhysics(),
         padding: EdgeInsets.fromLTRB(20, 8, 20, bottomPadding),
@@ -224,6 +230,7 @@ class _ServiceListCardState extends State<_ServiceListCard> {
       onTapDown: (_) => setState(() => _press = 0.985),
       onTapCancel: () => setState(() => _press = 1.0),
       onTapUp: (_) => setState(() => _press = 1.0),
+      // 整个卡片点击依然保留 snack（作为统一反馈）
       onTap: () => _snack(context, 'Coming soon: ${item.label}'),
       child: Transform.scale(
         scale: _press,
@@ -299,32 +306,78 @@ class _ServiceListCardState extends State<_ServiceListCard> {
                     ),
                     const SizedBox(height: 10),
                     Align(
-                      // ← 只包一层 Align，把按钮靠右
                       alignment: Alignment.centerRight,
-                      child: Container(
-                        height: 28, // ← 略矮一些
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10, // ← 水平内边距更小 → 按钮更短
-                        ),
-                        decoration: BoxDecoration(
-                          color: _LightPalette.accentBlue,
-                          borderRadius: BorderRadius.circular(8), // ← 圆角可微调
-                          boxShadow: [
-                            BoxShadow(
-                              color: _LightPalette.accentBlue.withOpacity(.24),
-                              blurRadius: 10,
-                              offset: const Offset(0, 5),
-                            ),
-                          ],
-                        ),
-                        child: const Center(
-                          child: Text(
-                            'View details', // ← 文案改这里
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w700,
-                              letterSpacing: .2,
-                              fontSize: 12.0, // ← 字体略小
+                      child: GestureDetector(
+                        // ⭐ 这里控制 View details 的跳转
+                        onTap: () {
+                          if (item.label == 'Swimming') {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => const SwimmingBookingPage(),
+                              ),
+                            );
+                          } else if (item.label == 'Fitness') {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => const GymBookingPage(),
+                              ),
+                            );
+                          } else if (item.label == 'Conference Hall') {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) =>
+                                    const ConferenceHallBookingPage(),
+                              ),
+                            );
+                          } else if (item.label == 'Housekeeping') {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => const HousekeepingBookingPage(),
+                              ),
+                            );
+                          } else if (item.label == 'Laundry & Ironing') {
+                            // ⭐⭐ 新增
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) =>
+                                    const LaundryIroningBookingPage(),
+                              ),
+                            );
+                          } else {
+                            _snack(context, 'Coming soon: ${item.label}');
+                          }
+                        },
+
+                        child: Container(
+                          height: 28,
+                          padding: const EdgeInsets.symmetric(horizontal: 10),
+                          decoration: BoxDecoration(
+                            color: _LightPalette.accentBlue,
+                            borderRadius: BorderRadius.circular(8),
+                            boxShadow: [
+                              BoxShadow(
+                                color: _LightPalette.accentBlue.withOpacity(
+                                  .24,
+                                ),
+                                blurRadius: 10,
+                                offset: const Offset(0, 5),
+                              ),
+                            ],
+                          ),
+                          child: const Center(
+                            child: Text(
+                              'View details',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: .2,
+                                fontSize: 12.0,
+                              ),
                             ),
                           ),
                         ),

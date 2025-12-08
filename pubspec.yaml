@@ -23,6 +23,7 @@ dependencies:
   video_player: ^2.9.1
 
   model_viewer_plus: ^1.7.0
+  panorama_viewer: 2.0.7    # ⭐ 改成 panorama_viewer，替代 panorama 插件
 
 dev_dependencies:
   flutter_test:
@@ -34,8 +35,9 @@ flutter:
   uses-material-design: true
 
   assets:
-     - assets/rooms/
-     - assets/icons/hotel_icon.png
-     - assets/seacity.jpg
-     - assets/models/
-     - assets/videos/splash.mp4
+    - assets/rooms/
+    - assets/icons/hotel_icon.png
+    - assets/seacity.jpg
+    - assets/models/
+    - assets/videos/splash.mp4
+    - assets/services/     # ⭐ pool.jpg、pool_360.jpg、gym.jpg、gym_360.jpg 等

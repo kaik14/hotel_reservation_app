@@ -21,8 +21,9 @@ void main() async {
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
   // ✅ 初始化 Stripe
-  Stripe.publishableKey = 'pk_test_51SXh0GEjeF1waGVWABFxFOc84MkNstY3w1apapMvIB2QqkLMas5rKkU33ZWsmCFqsI6LShQvtLEBuPP383WxkC0800AGp01Vfn';
-  
+  Stripe.publishableKey =
+      'pk_test_51SXh0GEjeF1waGVWABFxFOc84MkNstY3w1apapMvIB2QqkLMas5rKkU33ZWsmCFqsI6LShQvtLEBuPP383WxkC0800AGp01Vfn';
+
   // ✅✅✅ 修复 FPX 跳转的关键配置 ✅✅✅
   Stripe.urlScheme = 'flutterstripe';
 

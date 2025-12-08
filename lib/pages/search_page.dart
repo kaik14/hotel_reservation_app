@@ -172,28 +172,27 @@ class _SearchPageState extends State<SearchPage> {
   }
 
   /// ✅ 打开房型详情（带楼层 floorId）
-void _openRoom(DocumentSnapshot room, Map<String, dynamic> data) {
-  // 从 Firestore 取楼层，如果没有就默认给 8F
-  final String floorId = (data['floorLevel'] ?? '8F').toString();
+  void _openRoom(DocumentSnapshot room, Map<String, dynamic> data) {
+    // 从 Firestore 取楼层，如果没有就默认给 8F
+    final String floorId = (data['floorLevel'] ?? '8F').toString();
 
-  Navigator.push(
-    context,
-    MaterialPageRoute(
-      builder: (_) => RoomDetailPage(
-        docId: room.id,
-        title: data['titleEN'],
-        imageUrl: 'assets/rooms/${data['imageName']}',
-        price: "RM${data['price']} per night",
-        description: data['description'] ?? '',
-        imageName: data['imageName'],
-        initialCheckIn: _checkInDate,
-        initialCheckOut: _checkOutDate,
-        floorId: floorId, // 👈 关键：把楼层传进去
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => RoomDetailPage(
+          docId: room.id,
+          title: data['titleEN'],
+          imageUrl: 'assets/rooms/${data['imageName']}',
+          price: "RM${data['price']} per night",
+          description: data['description'] ?? '',
+          imageName: data['imageName'],
+          initialCheckIn: _checkInDate,
+          initialCheckOut: _checkOutDate,
+          floorId: floorId, // 👈 关键：把楼层传进去
+        ),
       ),
-    ),
-  );
-}
-
+    );
+  }
 
   /// ✅ 搜索结果（加入日期过滤）
   Widget _buildSearchResults() {
@@ -416,8 +415,9 @@ void _openRoom(DocumentSnapshot room, Map<String, dynamic> data) {
       // 背景统一
       backgroundColor: _Brand.bg,
 
-appBar: AppBar(
-        backgroundColor: _Brand.bar, // 为了防止 _Brand 报错，我先用了深色背景，你也可以换回 _Brand.bar
+      appBar: AppBar(
+        backgroundColor:
+            _Brand.bar, // 为了防止 _Brand 报错，我先用了深色背景，你也可以换回 _Brand.bar
         elevation: 0,
         centerTitle: false,
         titleSpacing: 20,
@@ -470,10 +470,7 @@ appBar: AppBar(
         ),
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(0.5),
-          child: Container(
-            height: 0.5,
-            color: Colors.white.withOpacity(0.08),
-          ),
+          child: Container(height: 0.5, color: Colors.white.withOpacity(0.08)),
         ),
       ),
 

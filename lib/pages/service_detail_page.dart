@@ -180,7 +180,7 @@ class _ServiceDetailPageState extends State<ServiceDetailPage> {
         .get();
 
     for (final d in qs.docs) {
-      final m = d.data() as Map<String, dynamic>;
+      final m = d.data();
       final tsIn = (m['checkIn'] as Timestamp?)?.toDate();
       final tsOut = (m['checkOut'] as Timestamp?)?.toDate();
       if (tsIn == null || tsOut == null) continue;
