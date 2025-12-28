@@ -19,7 +19,7 @@ class _RegisterPageState extends State<RegisterPage> {
   final _phoneController = TextEditingController();
 
   bool _isLoading = false;
-  
+
   // ✅ 1. 新增：控制密码是否隐藏的变量
   bool _obscurePassword = true;
 
