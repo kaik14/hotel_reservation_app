@@ -1,20 +1,26 @@
 import 'package:flutter/material.dart';
 import 'room_map_selector.dart';
+import '../utils/booking_availability.dart';
 
 class RoomMapPage extends StatefulWidget {
-  /// 进入页面时默认楼层，比如 '8F'
+  /// 你传进来的 floorId 可能是 8F / 08F，都可以
   final String floorId;
 
-  /// 所有可用房间号（可能包含 801–816、901–916、1201–1216 等）
-  final List<String> availableRooms;
+  /// ✅ rooms collection doc id，例如 "R02"
+  final String roomTypeId;
 
-  /// 如果一开始已经选过房间，可以传进来；否则为 null
+  /// ✅ 用户选的入住/退房日期
+  final DateTime checkIn;
+  final DateTime checkOut;
+
   final String? initialSelectedRoom;
 
   const RoomMapPage({
     super.key,
     required this.floorId,
-    required this.availableRooms,
+    required this.roomTypeId,
+    required this.checkIn,
+    required this.checkOut,
     this.initialSelectedRoom,
   });
 
@@ -23,75 +29,108 @@ class RoomMapPage extends StatefulWidget {
 }
 
 class _RoomMapPageState extends State<RoomMapPage> {
-  /// 当前显示的楼层，形如 '8F'、'12F'
   late String _currentFloorId;
-
-  /// 当前选中的房间号
   String? _selectedRoom;
+
+  bool _loading = true;
+  List<String> _availableRoomsAll = [];
+
+  /// ✅ 把 floorId 统一成两位数格式：8F -> 08F
+  String _normalizeFloorId(String floorId) {
+    final m = RegExp(r'^(\d{1,2})F$').firstMatch(floorId.trim());
+    if (m == null) return floorId.trim();
+    final n = int.tryParse(m.group(1)!) ?? 0;
+    return '${n.toString().padLeft(2, '0')}F';
+  }
 
   @override
   void initState() {
     super.initState();
 
-    _selectedRoom = widget.initialSelectedRoom;
+    _selectedRoom = widget.initialSelectedRoom == null
+        ? null
+        : normalizeRoomNo(widget.initialSelectedRoom!);
 
-    // 先算出有哪些楼层
-    final floors = _computeFloorIds();
+    _currentFloorId = _normalizeFloorId(widget.floorId);
 
-    // 如果传进来的 floorId 在可用楼层里，就用它；否则默认用第一个楼层
-    if (floors.contains(widget.floorId)) {
-      _currentFloorId = widget.floorId;
-    } else if (floors.isNotEmpty) {
-      _currentFloorId = floors.first;
-    } else {
-      // 防御：没有房间时随便给一个，避免空字符串
-      _currentFloorId = widget.floorId;
-    }
+    _loadAvailableRooms();
   }
 
-  /// 根据 availableRooms 计算有哪些楼层
-  /// 例如 ['801', '802', '902', '1208'] -> ['8F', '9F', '12F']
+  Future<void> _loadAvailableRooms() async {
+    setState(() => _loading = true);
+
+    try {
+      final list = await getAvailableRoomNosFromFirestore(
+        roomTypeId: widget.roomTypeId,
+        checkIn: widget.checkIn,
+        checkOut: widget.checkOut,
+      );
+
+      _availableRoomsAll = list.map(normalizeRoomNo).toList();
+
+      final floors = _computeFloorIds();
+
+      final wanted = _normalizeFloorId(widget.floorId);
+      if (floors.contains(wanted)) {
+        _currentFloorId = wanted;
+      } else if (floors.isNotEmpty) {
+        _currentFloorId = floors.first;
+      }
+
+      if (_selectedRoom != null && !_availableRoomsAll.contains(_selectedRoom)) {
+        _selectedRoom = null;
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to load rooms: $e')),
+        );
+      }
+    }
+
+    if (mounted) setState(() => _loading = false);
+  }
+
+  /// 从房号提取楼层（只取开头数字，比如 0801 -> 08F，1208 -> 12F）
+  String? _floorIdFromRoomNo(String roomNo) {
+    final rn = normalizeRoomNo(roomNo);
+    final m = RegExp(r'^(\d{2})').firstMatch(rn);
+    if (m == null) return null;
+    return '${m.group(1)}F';
+  }
+
   List<String> _computeFloorIds() {
     final set = <String>{};
 
-    for (final room in widget.availableRooms) {
-      if (room.length >= 3) {
-        // 3 位房号：801 -> 楼层 '8'
-        // 4 位房号：1208 -> 楼层 '12'
-        final floorNumber =
-            room.length == 3 ? room.substring(0, 1) : room.substring(0, 2);
-        set.add('${floorNumber}F');
-      }
+    for (final room in _availableRoomsAll) {
+      final floorId = _floorIdFromRoomNo(room);
+      if (floorId != null) set.add(floorId);
     }
 
     final list = set.toList()
       ..sort((a, b) {
-        // 按数字排序：'8F'、'9F'、'10F'...
         int pa = int.tryParse(a.replaceAll('F', '')) ?? 0;
         int pb = int.tryParse(b.replaceAll('F', '')) ?? 0;
         return pa.compareTo(pb);
       });
+
     return list;
   }
 
-  /// 按楼层过滤可用房间号
   List<String> _roomsForFloor(String floorId) {
-    // '8F' -> '8'，'12F' -> '12'
-    final prefix = floorId.replaceAll('F', '');
-    final rooms = widget.availableRooms
-        .where((r) => r.startsWith(prefix))
-        .toList()
-      ..sort(); // 顺便按房号排序
+    final fid = _normalizeFloorId(floorId);
+    final prefix = fid.replaceAll('F', ''); // 08 / 12
+    final rooms = _availableRoomsAll.where((r) => r.startsWith(prefix)).toList()..sort();
     return rooms;
   }
 
-  /// 切换楼层时调用
   void _changeFloor(String floorId) {
-    setState(() {
-      _currentFloorId = floorId;
+    final fid = _normalizeFloorId(floorId);
 
-      // 如果之前选的房间不属于当前楼层，就清空选中
-      final floorRooms = _roomsForFloor(floorId);
+    setState(() {
+      _currentFloorId = fid;
+
+      final floorRooms = _roomsForFloor(fid);
       if (_selectedRoom != null && !floorRooms.contains(_selectedRoom)) {
         _selectedRoom = null;
       }
@@ -110,8 +149,8 @@ class _RoomMapPageState extends State<RoomMapPage> {
 
   @override
   Widget build(BuildContext context) {
+    final floorIds = _computeFloorIds();
     final floorRooms = _roomsForFloor(_currentFloorId);
-    final floorIds = _computeFloorIds(); // 只包含真正有房间的楼层
 
     return Scaffold(
       appBar: AppBar(
@@ -121,110 +160,116 @@ class _RoomMapPageState extends State<RoomMapPage> {
         elevation: 0,
         iconTheme: const IconThemeData(color: Colors.black),
         foregroundColor: Colors.black,
+        actions: [
+          IconButton(
+            onPressed: _loadAvailableRooms,
+            icon: const Icon(Icons.refresh),
+            tooltip: 'Refresh availability',
+          ),
+        ],
       ),
       body: Stack(
         children: [
-          // 背景图
           Positioned.fill(
-            child: Image.asset(
-              'assets/seacity.jpg', // 你的背景图路径
-              fit: BoxFit.cover,
-            ),
+            child: Image.asset('assets/seacity.jpg', fit: BoxFit.cover),
           ),
-          // 半透明蒙层
-          Positioned.fill(
-            child: Container(color: Colors.black26),
-          ),
-
+          Positioned.fill(child: Container(color: Colors.black26)),
           SafeArea(
-            child: Column(
-              children: [
-                const SizedBox(height: 12),
-
-                Expanded(
-  child: Align(
-    alignment: Alignment.topCenter, // 顶部居中
-    child: Padding(
-      padding: const EdgeInsets.only(top: 246), // 往下 24px，数值越大越靠下
-      child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 0),
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(24),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.18),
-              blurRadius: 18,
-              offset: const Offset(0, 9),
-            ),
-          ],
-        ),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          // ---------- 楼层切换按钮（根据 availableRooms 动态生成） ----------
-                          SingleChildScrollView(
-                            scrollDirection: Axis.horizontal,
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: floorIds.map((floorId) {
-                                return Padding(
-                                  padding:
-                                      const EdgeInsets.symmetric(horizontal: 4),
-                                  child: ChoiceChip(
-                                    label: Text(floorId),
-                                    selected: _currentFloorId == floorId,
-                                    onSelected: (_) => _changeFloor(floorId),
+            child: _loading
+                ? const Center(
+                    child: Card(
+                      child: Padding(
+                        padding: EdgeInsets.all(16),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            CircularProgressIndicator(),
+                            SizedBox(width: 12),
+                            Text('Loading available rooms...'),
+                          ],
+                        ),
+                      ),
+                    ),
+                  )
+                : Column(
+                    children: [
+                      const SizedBox(height: 12),
+                      Expanded(
+                        child: Align(
+                          alignment: Alignment.topCenter,
+                          child: Padding(
+                            padding: const EdgeInsets.only(top: 246),
+                            child: Container(
+                              padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(24),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withOpacity(0.18),
+                                    blurRadius: 18,
+                                    offset: const Offset(0, 9),
                                   ),
-                                );
-                              }).toList(),
+                                ],
+                              ),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  SingleChildScrollView(
+                                    scrollDirection: Axis.horizontal,
+                                    child: Row(
+                                      children: (floorIds.isEmpty ? [_currentFloorId] : floorIds)
+                                          .map((fid) {
+                                        return Padding(
+                                          padding: const EdgeInsets.symmetric(horizontal: 4),
+                                          child: ChoiceChip(
+                                            label: Text(fid),
+                                            selected: _currentFloorId == fid,
+                                            onSelected: (_) => _changeFloor(fid),
+                                          ),
+                                        );
+                                      }).toList(),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+
+                                  RoomMapSelector(
+                                    floorId: _currentFloorId,
+                                    availableRooms: floorRooms,
+                                    selectedRoom: _selectedRoom,
+                                    onSelected: (roomNo) {
+                                      setState(() => _selectedRoom = roomNo);
+                                    },
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
-                          const SizedBox(height: 8),
-
-                          // ---------- 地图选房 ----------
-                          RoomMapSelector(
-                            floorId: _currentFloorId,
-                            availableRooms: floorRooms,
-                            selectedRoom: _selectedRoom,
-                            onSelected: (roomNo) {
-                              setState(() => _selectedRoom = roomNo);
-                            },
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                        child: SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton(
+                            onPressed: _onConfirm,
+                            style: ElevatedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(24),
+                              ),
+                              backgroundColor: const Color(0xFF5E4BB5),
+                            ),
+                            child: const Text(
+                              'Confirm Room',
+                              style: TextStyle(fontSize: 16, color: Colors.white),
+                            ),
                           ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-                ),
-                // 底部确认按钮
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-                  child: SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      onPressed: _onConfirm,
-                      style: ElevatedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(24),
-                        ),
-                        backgroundColor: const Color(0xFF5E4BB5),
-                      ),
-                      child: const Text(
-                        'Confirm Room',
-                        style: TextStyle(
-                          fontSize: 16,
-                          color: Colors.white,
                         ),
                       ),
-                    ),
+                    ],
                   ),
-                ),
-              ],
-            ),
           ),
         ],
       ),

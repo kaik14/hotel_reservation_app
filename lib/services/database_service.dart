@@ -5,11 +5,9 @@ import 'package:flutter/foundation.dart';
 class DatabaseService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
 
-  // 1. 创建用户数据
-  //    当用户注册时，我们会调用此方法
+ // 1. 修改：增加 [role] 参数，默认为 'customer'
   Future<void> createUserData(String uid, String email, String firstName,
-      String lastName, String phoneNumber) async {
-    // 创建一个指向 'users' 集合中新文档的引用，ID 为 uid
+      String lastName, String phoneNumber, {String role = 'customer'}) async { // 👈 修改了这里
     DocumentReference userDoc = _db.collection('users').doc(uid);
     
     await userDoc.set({
@@ -18,8 +16,9 @@ class DatabaseService {
       'firstName': firstName,
       'lastName': lastName,
       'phoneNumber': phoneNumber,
-      'role': 'customer', // ✅ 新增：注册时默认为普通用户
+      'role': role, // 👈 这里使用传入的参数
       'createdAt': FieldValue.serverTimestamp(),
+      'isSetup': true, // 管理员添加的员工默认跳过偏好设置
     });
   }
 
@@ -105,6 +104,18 @@ class DatabaseService {
       await _db.collection('users').doc(uid).set({
         'isSetup': true,
       }, SetOptions(merge: true));
+    }
+  }
+
+  // ✅ 新增：删除用户数据 (Soft Delete)
+  // 注意：这只会删除数据库记录，员工将无法登录 App (被 AuthGate 拦截)，但 Auth 账号本身还在。
+  Future<void> deleteUserData(String uid) async {
+    try {
+      await _db.collection('users').doc(uid).delete();
+      debugPrint('User deleted from Firestore');
+    } catch (e) {
+      debugPrint('Error deleting user: $e');
+      rethrow;
     }
   }
 

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../utils/booking_availability.dart';
 
 /// ------- 房间在地图上的数据 -------
 
@@ -20,62 +21,62 @@ class MapRoom {
 
 /// 8 楼布局：上排 + 下排（只管 801–816 房间）
 
-const List<MapRoom> floor8Rooms = [
+const List<MapRoom> floor08Rooms = [
   // ---------- 上排 ----------
-  MapRoom(roomNo: '801', left: 0.12, top: 0.02, width: 0.08, height: 0.38),
-  MapRoom(roomNo: '803', left: 0.20, top: 0.02, width: 0.08, height: 0.38),
-  MapRoom(roomNo: '805', left: 0.28, top: 0.02, width: 0.08, height: 0.38),
-  MapRoom(roomNo: '807', left: 0.36, top: 0.02, width: 0.08, height: 0.38),
-  MapRoom(roomNo: '809', left: 0.44, top: 0.02, width: 0.08, height: 0.38),
+  MapRoom(roomNo: '0801', left: 0.12, top: 0.02, width: 0.08, height: 0.38),
+  MapRoom(roomNo: '0803', left: 0.20, top: 0.02, width: 0.08, height: 0.38),
+  MapRoom(roomNo: '0805', left: 0.28, top: 0.02, width: 0.08, height: 0.38),
+  MapRoom(roomNo: '0807', left: 0.36, top: 0.02, width: 0.08, height: 0.38),
+  MapRoom(roomNo: '0809', left: 0.44, top: 0.02, width: 0.08, height: 0.38),
   // 0.60 位置留给“电梯”
-  MapRoom(roomNo: '811', left: 0.60, top: 0.02, width: 0.12, height: 0.38),
-  MapRoom(roomNo: '813', left: 0.72, top: 0.02, width: 0.12, height: 0.38),
-  MapRoom(roomNo: '815', left: 0.84, top: 0.02, width: 0.12, height: 0.38),
+  MapRoom(roomNo: '0811', left: 0.60, top: 0.02, width: 0.12, height: 0.38),
+  MapRoom(roomNo: '0813', left: 0.72, top: 0.02, width: 0.12, height: 0.38),
+  MapRoom(roomNo: '0815', left: 0.84, top: 0.02, width: 0.12, height: 0.38),
 
   // ---------- 下排 ----------
   // 0.02 和 0.90 两边留给“楼梯”
-  MapRoom(roomNo: '802', left: 0.08, top: 0.60, width: 0.08, height: 0.38),
-  MapRoom(roomNo: '804', left: 0.16, top: 0.60, width: 0.08, height: 0.38),
-  MapRoom(roomNo: '806', left: 0.24, top: 0.60, width: 0.08, height: 0.38),
-  MapRoom(roomNo: '808', left: 0.32, top: 0.60, width: 0.08, height: 0.38),
-  MapRoom(roomNo: '810', left: 0.40, top: 0.60, width: 0.12, height: 0.38),
-  MapRoom(roomNo: '812', left: 0.52, top: 0.60, width: 0.12, height: 0.38),
-  MapRoom(roomNo: '814', left: 0.64, top: 0.60, width: 0.12, height: 0.38),
-  MapRoom(roomNo: '816', left: 0.76, top: 0.60, width: 0.15, height: 0.38),
+  MapRoom(roomNo: '0802', left: 0.08, top: 0.60, width: 0.08, height: 0.38),
+  MapRoom(roomNo: '0804', left: 0.16, top: 0.60, width: 0.08, height: 0.38),
+  MapRoom(roomNo: '0806', left: 0.24, top: 0.60, width: 0.08, height: 0.38),
+  MapRoom(roomNo: '0808', left: 0.32, top: 0.60, width: 0.08, height: 0.38),
+  MapRoom(roomNo: '0810', left: 0.40, top: 0.60, width: 0.12, height: 0.38),
+  MapRoom(roomNo: '0812', left: 0.52, top: 0.60, width: 0.12, height: 0.38),
+  MapRoom(roomNo: '0814', left: 0.64, top: 0.60, width: 0.12, height: 0.38),
+  MapRoom(roomNo: '0816', left: 0.76, top: 0.60, width: 0.15, height: 0.38),
 ];
 
 /// 9 楼布局：和 8 楼一样，只是房号从 901–916
-const List<MapRoom> floor9Rooms = [
+const List<MapRoom> floor09Rooms = [
   // ---------- 上排 ----------
-  MapRoom(roomNo: '901', left: 0.12, top: 0.02, width: 0.08, height: 0.38),
-  MapRoom(roomNo: '903', left: 0.20, top: 0.02, width: 0.08, height: 0.38),
-  MapRoom(roomNo: '905', left: 0.28, top: 0.02, width: 0.08, height: 0.38),
-  MapRoom(roomNo: '907', left: 0.36, top: 0.02, width: 0.08, height: 0.38),
-  MapRoom(roomNo: '909', left: 0.44, top: 0.02, width: 0.08, height: 0.38),
-  MapRoom(roomNo: '911', left: 0.60, top: 0.02, width: 0.12, height: 0.38),
-  MapRoom(roomNo: '913', left: 0.72, top: 0.02, width: 0.12, height: 0.38),
-  MapRoom(roomNo: '915', left: 0.84, top: 0.02, width: 0.12, height: 0.38),
+  MapRoom(roomNo: '0901', left: 0.12, top: 0.02, width: 0.08, height: 0.38),
+  MapRoom(roomNo: '0903', left: 0.20, top: 0.02, width: 0.08, height: 0.38),
+  MapRoom(roomNo: '0905', left: 0.28, top: 0.02, width: 0.08, height: 0.38),
+  MapRoom(roomNo: '0907', left: 0.36, top: 0.02, width: 0.08, height: 0.38),
+  MapRoom(roomNo: '0909', left: 0.44, top: 0.02, width: 0.08, height: 0.38),
+  MapRoom(roomNo: '0911', left: 0.60, top: 0.02, width: 0.12, height: 0.38),
+  MapRoom(roomNo: '0913', left: 0.72, top: 0.02, width: 0.12, height: 0.38),
+  MapRoom(roomNo: '0915', left: 0.84, top: 0.02, width: 0.12, height: 0.38),
 
   // ---------- 下排 ----------
-  MapRoom(roomNo: '902', left: 0.08, top: 0.60, width: 0.08, height: 0.38),
-  MapRoom(roomNo: '904', left: 0.16, top: 0.60, width: 0.08, height: 0.38),
-  MapRoom(roomNo: '906', left: 0.24, top: 0.60, width: 0.08, height: 0.38),
-  MapRoom(roomNo: '908', left: 0.32, top: 0.60, width: 0.08, height: 0.38),
-  MapRoom(roomNo: '910', left: 0.40, top: 0.60, width: 0.12, height: 0.38),
-  MapRoom(roomNo: '912', left: 0.52, top: 0.60, width: 0.12, height: 0.38),
-  MapRoom(roomNo: '914', left: 0.64, top: 0.60, width: 0.12, height: 0.38),
-  MapRoom(roomNo: '916', left: 0.76, top: 0.60, width: 0.15, height: 0.38),
+  MapRoom(roomNo: '0902', left: 0.08, top: 0.60, width: 0.08, height: 0.38),
+  MapRoom(roomNo: '0904', left: 0.16, top: 0.60, width: 0.08, height: 0.38),
+  MapRoom(roomNo: '0906', left: 0.24, top: 0.60, width: 0.08, height: 0.38),
+  MapRoom(roomNo: '0908', left: 0.32, top: 0.60, width: 0.08, height: 0.38),
+  MapRoom(roomNo: '0910', left: 0.40, top: 0.60, width: 0.12, height: 0.38),
+  MapRoom(roomNo: '0912', left: 0.52, top: 0.60, width: 0.12, height: 0.38),
+  MapRoom(roomNo: '0914', left: 0.64, top: 0.60, width: 0.12, height: 0.38),
+  MapRoom(roomNo: '0916', left: 0.76, top: 0.60, width: 0.15, height: 0.38),
 ];
 
 /// 10 楼布局
 const List<MapRoom> floor10Rooms = [
   // ---------- 上排 ----------
   MapRoom(roomNo: '1001', left: 0.05, top: 0.02, width: 0.12, height: 0.38),
-  MapRoom(roomNo: '1005', left: 0.17, top: 0.02, width: 0.12, height: 0.38),
-  MapRoom(roomNo: '1007', left: 0.29, top: 0.02, width: 0.12, height: 0.38),
-  MapRoom(roomNo: '1009', left: 0.41, top: 0.02, width: 0.11, height: 0.38),
-  MapRoom(roomNo: '1011', left: 0.60, top: 0.02, width: 0.12, height: 0.38),
-  MapRoom(roomNo: '1013', left: 0.72, top: 0.02, width: 0.09, height: 0.38),
+  MapRoom(roomNo: '1003', left: 0.17, top: 0.02, width: 0.12, height: 0.38),
+  MapRoom(roomNo: '1005', left: 0.29, top: 0.02, width: 0.12, height: 0.38),
+  MapRoom(roomNo: '1007', left: 0.41, top: 0.02, width: 0.11, height: 0.38),
+  MapRoom(roomNo: '1009', left: 0.60, top: 0.02, width: 0.12, height: 0.38),
+  MapRoom(roomNo: '1011', left: 0.72, top: 0.02, width: 0.09, height: 0.38),
   MapRoom(roomNo: '1013', left: 0.81, top: 0.02, width: 0.08, height: 0.38),
   MapRoom(roomNo: '1015', left: 0.89, top: 0.02, width: 0.08, height: 0.38),
 
@@ -94,11 +95,11 @@ const List<MapRoom> floor10Rooms = [
 const List<MapRoom> floor11Rooms = [
   // ---------- 上排 ----------
   MapRoom(roomNo: '1101', left: 0.05, top: 0.02, width: 0.12, height: 0.38),
-  MapRoom(roomNo: '1105', left: 0.17, top: 0.02, width: 0.12, height: 0.38),
-  MapRoom(roomNo: '1107', left: 0.29, top: 0.02, width: 0.12, height: 0.38),
-  MapRoom(roomNo: '1109', left: 0.41, top: 0.02, width: 0.11, height: 0.38),
-  MapRoom(roomNo: '1111', left: 0.60, top: 0.02, width: 0.12, height: 0.38),
-  MapRoom(roomNo: '1113', left: 0.72, top: 0.02, width: 0.09, height: 0.38),
+  MapRoom(roomNo: '1103', left: 0.17, top: 0.02, width: 0.12, height: 0.38),
+  MapRoom(roomNo: '1105', left: 0.29, top: 0.02, width: 0.12, height: 0.38),
+  MapRoom(roomNo: '1107', left: 0.41, top: 0.02, width: 0.11, height: 0.38),
+  MapRoom(roomNo: '1109', left: 0.60, top: 0.02, width: 0.12, height: 0.38),
+  MapRoom(roomNo: '1111', left: 0.72, top: 0.02, width: 0.09, height: 0.38),
   MapRoom(roomNo: '1113', left: 0.81, top: 0.02, width: 0.08, height: 0.38),
   MapRoom(roomNo: '1115', left: 0.89, top: 0.02, width: 0.08, height: 0.38),
 
@@ -381,11 +382,11 @@ const List<MapRoom> floor26Rooms = [
 
 List<MapRoom> getRoomsForFloor(String floorId) {
   switch (floorId) {
-    case '8F':
-      return floor8Rooms;
+    case '08F':
+      return floor08Rooms;
     // 以后有 9F、10F 在这里继续加 case
-    case '9F':
-      return floor9Rooms;   // 👈 新增 9 楼
+    case '09F':
+      return floor09Rooms;   // 👈 新增 9 楼
     case '10F':
       return floor10Rooms; 
     case '11F':
@@ -421,7 +422,7 @@ List<MapRoom> getRoomsForFloor(String floorId) {
     case '26F':
       return floor26Rooms; 
     default:
-      return floor8Rooms;
+      return floor08Rooms;
   }
 }
 
@@ -445,6 +446,10 @@ class RoomMapSelector extends StatelessWidget {
   Widget build(BuildContext context) {
     final rooms = getRoomsForFloor(floorId);
 
+    // ✅ 统一可用房号格式（避免 801 vs 0801 对不上）
+    final availableSet = availableRooms.map(normalizeRoomNo).toSet();
+    final selected = selectedRoom == null ? null : normalizeRoomNo(selectedRoom!);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -462,7 +467,6 @@ class RoomMapSelector extends StatelessWidget {
 
               return Stack(
                 children: [
-                  // 背景框
                   Container(
                     decoration: BoxDecoration(
                       color: Colors.grey[100],
@@ -471,19 +475,15 @@ class RoomMapSelector extends StatelessWidget {
                     ),
                   ),
 
-                  // ------- 房间块（可点击） -------
                   for (final mapRoom in rooms)
                     Positioned(
                       left: mapRoom.left * w,
                       top: mapRoom.top * h,
                       width: mapRoom.width * w,
                       height: mapRoom.height * h,
-                      child: _buildRoomBox(mapRoom),
+                      child: _buildRoomBox(mapRoom, availableSet, selected),
                     ),
 
-                  // ------- 楼梯 & 电梯（不可点击，只是标注） -------
-
-                  // 左下楼梯
                   Positioned(
                     left: 0.02 * w,
                     top: 0.60 * h,
@@ -491,8 +491,6 @@ class RoomMapSelector extends StatelessWidget {
                     height: 0.38 * h,
                     child: _buildUtilityBox("Staircase", Icons.stairs),
                   ),
-
-                  // 右下楼梯
                   Positioned(
                     left: 0.91 * w,
                     top: 0.60 * h,
@@ -500,8 +498,6 @@ class RoomMapSelector extends StatelessWidget {
                     height: 0.38 * h,
                     child: _buildUtilityBox("Staircase", Icons.stairs),
                   ),
-
-                  // 中间电梯
                   Positioned(
                     left: 0.52 * w,
                     top: 0.02 * h,
@@ -516,7 +512,6 @@ class RoomMapSelector extends StatelessWidget {
         ),
         const SizedBox(height: 8),
 
-        // 房间状态图例
         Row(
           children: [
             _buildLegendBox(Colors.blue, "Available"),
@@ -528,22 +523,18 @@ class RoomMapSelector extends StatelessWidget {
         ),
         const SizedBox(height: 4),
 
-
         Text(
-          selectedRoom == null
-              ? "Selected Room: -"
-              : "Selected Room: $selectedRoom",
+          selected == null ? "Selected Room: -" : "Selected Room: $selected",
           style: const TextStyle(fontWeight: FontWeight.w500),
         ),
       ],
     );
   }
 
-  /// ------- 单个房间块（可点击） -------
-
-  Widget _buildRoomBox(MapRoom mapRoom) {
-    final bool isAvailable = availableRooms.contains(mapRoom.roomNo);
-    final bool isSelected = selectedRoom == mapRoom.roomNo;
+  Widget _buildRoomBox(MapRoom mapRoom, Set<String> availableSet, String? selected) {
+    final mapNo = normalizeRoomNo(mapRoom.roomNo);
+    final bool isAvailable = availableSet.contains(mapNo);
+    final bool isSelected = selected == mapNo;
 
     Color borderColor;
     Color fillColor;
@@ -563,8 +554,8 @@ class RoomMapSelector extends StatelessWidget {
 
     return GestureDetector(
       onTap: () {
-        if (!isAvailable) return; // 已被预订不能选
-        onSelected(mapRoom.roomNo);
+        if (!isAvailable) return;
+        onSelected(mapNo);
       },
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 160),
@@ -577,7 +568,7 @@ class RoomMapSelector extends StatelessWidget {
         child: FittedBox(
           fit: BoxFit.scaleDown,
           child: Text(
-            mapRoom.roomNo,
+            mapNo,
             style: TextStyle(
               fontSize: 12,
               color: !isAvailable ? Colors.grey.shade700 : Colors.black,
@@ -587,8 +578,6 @@ class RoomMapSelector extends StatelessWidget {
       ),
     );
   }
-
-  /// ------- 楼梯 / 电梯标注块（不可点击） -------
 
   Widget _buildUtilityBox(String label, IconData icon) {
     return IgnorePointer(
@@ -620,8 +609,6 @@ class RoomMapSelector extends StatelessWidget {
       ),
     );
   }
-
-  /// ------- 图例小方块 -------
 
   Widget _buildLegendBox(Color color, String label, {bool filled = false}) {
     return Row(
