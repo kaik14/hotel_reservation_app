@@ -1,10 +1,13 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:confetti/confetti.dart';
 
 import 'package:hotel_reservation_app/pages/staff_room_page.dart';
 import 'package:hotel_reservation_app/pages/staff_me_page.dart';
@@ -116,7 +119,7 @@ class _StaffPageState extends State<StaffPage> {
   }
 
   bool _isHandled(Map<String, dynamic> data) {
-    // 兼容两种：handled:true 或 status: handled/accepted
+    // 兼容：handled:true 或 status: handled/accepted/taken
     final handledFlag = (data['handled'] ?? false) == true;
     if (handledFlag) return true;
 
@@ -201,25 +204,90 @@ class _StaffPageState extends State<StaffPage> {
     return FirebaseFirestore.instance.collectionGroup('bookings').snapshots();
   }
 
-  // ✅ 接取任务：写回 Firestore
+  // ✅ 点击 Handle：标记完成 + 写入 staff_tasks（避免 Me 页 collectionGroup 索引）
   Future<void> _handleTakeTask(QueryDocumentSnapshot doc) async {
     try {
-      await doc.reference.update({
+      final u = FirebaseAuth.instance.currentUser;
+      final uid = u?.uid ?? '';
+      final email = u?.email ?? '';
+      if (uid.isEmpty) return;
+
+      final handledAt = Timestamp.now();
+
+      final batch = FirebaseFirestore.instance.batch();
+
+      // 1) 更新 booking
+      batch.update(doc.reference, {
         'handled': true,
         'status': 'handled',
-        'handledAt': Timestamp.now(),
+        'handledAt': handledAt,
+        'handledByUid': uid,
+        'handledByEmail': email,
       });
+
+      // 2) 写到 staff_tasks（Me 页直接查这个 collection）
+      final data = (doc.data() as Map<String, dynamic>);
+      final staffTaskId = '${uid}_${doc.id}';
+      final staffTaskRef =
+          FirebaseFirestore.instance.collection('staff_tasks').doc(staffTaskId);
+
+      batch.set(staffTaskRef, {
+        'staffUid': uid,
+        'staffEmail': email,
+        'bookingDocId': doc.id,
+        'bookingPath': doc.reference.path,
+        'handledAt': handledAt,
+
+        // 快照字段（Me 页展示）
+        'serviceType': data['serviceType'],
+        'serviceName': data['serviceName'],
+        'roomNumber': data['roomNumber'] ?? data['roomNo'],
+        'roomNo': data['roomNo'],
+        'userId': data['userId'],
+        'createdAt': data['createdAt'],
+      }, SetOptions(merge: true));
+
+      await batch.commit();
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Failed to handle task: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to handle task: $e')),
+      );
     }
   }
 
+  // ✅ 屏幕中间庆祝弹层（GIF + 彩带 + 星星）
+  void _showCelebrationOverlay() {
+  showGeneralDialog(
+    context: context,
+    barrierDismissible: false,
+    barrierLabel: 'celebration',
+    barrierColor: Colors.transparent, // ✅ 没有背景遮罩
+    transitionDuration: const Duration(milliseconds: 160),
+    pageBuilder: (_, __, ___) {
+      return const _CelebrationCenterPopup(
+        gifPath: 'assets/gifs/happy.gif', // ✅ 你的 GIF
+      );
+    },
+    transitionBuilder: (_, anim, __, child) {
+      final curve = CurvedAnimation(parent: anim, curve: Curves.easeOutBack);
+      return FadeTransition(
+        opacity: anim,
+        child: ScaleTransition(scale: curve, child: child),
+      );
+    },
+  );
+
+  // ✅ 自动关闭
+  Future.delayed(const Duration(milliseconds: 1500), () {
+    if (!mounted) return;
+    Navigator.of(context).maybePop();
+  });
+}
+
+
   @override
   Widget build(BuildContext context) {
-    // ✅ 用 Stack 把 overlay 压在 Scaffold 之上，覆盖 AppBar + BottomNav
     return Stack(
       children: [
         Scaffold(
@@ -305,7 +373,6 @@ class _StaffPageState extends State<StaffPage> {
           ),
         ),
 
-        // ✅ 全屏覆盖 intro（包含底部栏）
         if (_showIntro)
           Positioned.fill(
             child: _FullScreenIntroOverlay(
@@ -318,7 +385,7 @@ class _StaffPageState extends State<StaffPage> {
   }
 
   // =========================
-  // Task Page（✅显示全部任务）
+  // Task Page（✅只显示未完成任务）
   // =========================
   Widget _buildTaskPage() {
     return StreamBuilder<QuerySnapshot>(
@@ -335,16 +402,11 @@ class _StaffPageState extends State<StaffPage> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(
-                  Icons.assignment_turned_in_outlined,
-                  size: 64,
-                  color: Colors.grey,
-                ),
+                Icon(Icons.assignment_turned_in_outlined,
+                    size: 64, color: Colors.grey),
                 SizedBox(height: 16),
-                Text(
-                  'No tasks yet.',
-                  style: TextStyle(fontSize: 18, color: Colors.grey),
-                ),
+                Text('No tasks yet.',
+                    style: TextStyle(fontSize: 18, color: Colors.grey)),
               ],
             ),
           );
@@ -374,10 +436,13 @@ class _StaffPageState extends State<StaffPage> {
 
         final currentDocs = (_taskTypeIndex == 0) ? serviceDocs : roomDocs;
 
+        // ✅ 只显示未完成（handled==false）
         final filteredDocs = currentDocs.where((d) {
           final data = d.data() as Map<String, dynamic>;
-          if (_tabIndex == 0) return true;
-          return _isActive(data);
+          if (_isHandled(data)) return false; // 已完成的不显示
+
+          if (_tabIndex == 0) return true; // All（但仍然只显示未完成）
+          return _isActive(data); // Active（未完成 + 未取消/未结束）
         }).toList();
 
         final taskCount = filteredDocs.length;
@@ -387,7 +452,6 @@ class _StaffPageState extends State<StaffPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // 顶部统计
               Row(
                 children: [
                   Expanded(
@@ -407,30 +471,21 @@ class _StaffPageState extends State<StaffPage> {
                   ),
                 ],
               ),
-
               const SizedBox(height: 14),
-
-              // 任务类型：Service / Room
               _SegmentTabs(
                 leftText: 'Service Tasks',
                 rightText: 'Room Tasks',
                 index: _taskTypeIndex,
                 onChanged: (i) => setState(() => _taskTypeIndex = i),
               ),
-
               const SizedBox(height: 12),
-
-              // All / Active
               _SegmentTabs(
                 leftText: 'All',
                 rightText: 'Active',
                 index: _tabIndex,
                 onChanged: (i) => setState(() => _tabIndex = i),
               ),
-
               const SizedBox(height: 16),
-
-              // ✅ 显示全部任务（可滚动）
               Expanded(
                 child: ListView.separated(
                   itemCount: filteredDocs.length,
@@ -442,10 +497,9 @@ class _StaffPageState extends State<StaffPage> {
                     final title = _taskTitle(data);
                     final timeText = _taskTimeText(data);
                     final guestId = _guestIdText(doc, data);
-                    final handled = _isHandled(data);
 
                     return SizedBox(
-                      height: 127, // ✅ 按你要求
+                      height: 127,
                       child: _StaffTaskCard(
                         title: title,
                         subtitleLeft: timeText,
@@ -462,11 +516,12 @@ class _StaffPageState extends State<StaffPage> {
                             ),
                           );
                         },
-                        handled: handled,
+                        handled: false, // Task 页只显示未完成
                         onHandle: () async {
-                          if (handled) return;
-                          await _handleTakeTask(doc);
-                        },
+  _showCelebrationOverlay(); // ✅ 先播特效
+  await _handleTakeTask(doc); // ✅ 再写入 Firestore
+},
+
                       ),
                     );
                   },
@@ -554,7 +609,7 @@ class _FullScreenIntroOverlay extends StatelessWidget {
 }
 
 // =========================
-// ✅ 详情页（只展示重点信息 + 图片）
+// ✅ 详情页（你原样保留即可）
 // =========================
 class StaffTaskDetailPage extends StatelessWidget {
   final QueryDocumentSnapshot doc;
@@ -639,7 +694,7 @@ class StaffTaskDetailPage extends StatelessWidget {
       case 'swimming':
         return 'assets/services/swimming.jpg';
       default:
-        return 'assets/services/service.jpg'; // 你可以自己放一个通用图
+        return 'assets/services/service.jpg';
     }
   }
 
@@ -679,7 +734,6 @@ class StaffTaskDetailPage extends StatelessWidget {
       rows.add(_infoRow('Room No', roomNo));
     }
 
-    // —— 按服务类型补充少量重点字段 —— //
     if (type == 'laundry') {
       final items =
           (data['items'] ?? data['clothesCount'] ?? data['numberOfItems'] ?? '')
@@ -706,10 +760,8 @@ class StaffTaskDetailPage extends StatelessWidget {
     final createdAt = (data['createdAt'] as Timestamp?)?.toDate();
     final handledAt = (data['handledAt'] as Timestamp?)?.toDate();
 
-    if (createdAt != null)
-      rows.add(_infoRow('Created', _fmtDateTime(createdAt)));
-    if (handledAt != null)
-      rows.add(_infoRow('Handled At', _fmtDateTime(handledAt)));
+    if (createdAt != null) rows.add(_infoRow('Created', _fmtDateTime(createdAt)));
+    if (handledAt != null) rows.add(_infoRow('Handled At', _fmtDateTime(handledAt)));
 
     return rows;
   }
@@ -797,10 +849,7 @@ class StaffTaskDetailPage extends StatelessWidget {
                       height: 220,
                       color: Colors.black.withOpacity(0.06),
                       alignment: Alignment.center,
-                      child: const Icon(
-                        Icons.image_not_supported_outlined,
-                        size: 34,
-                      ),
+                      child: const Icon(Icons.image_not_supported_outlined, size: 34),
                     ),
                   ),
                 ),
@@ -809,18 +858,13 @@ class StaffTaskDetailPage extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        title,
-                        style: const TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
+                      Text(title,
+                          style: const TextStyle(
+                              fontSize: 20, fontWeight: FontWeight.bold)),
                       const SizedBox(height: 6),
-                      Text(
-                        subtitle,
-                        style: TextStyle(fontSize: 14, color: Colors.grey[700]),
-                      ),
+                      Text(subtitle,
+                          style:
+                              TextStyle(fontSize: 14, color: Colors.grey[700])),
                       const SizedBox(height: 14),
                       ..._importantRows(context).expand((w) sync* {
                         yield w;
@@ -841,10 +885,8 @@ class StaffTaskDetailPage extends StatelessWidget {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(
-          label,
-          style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
-        ),
+        Text(label,
+            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
         const SizedBox(width: 12),
         Expanded(
           child: Text(
@@ -1045,7 +1087,6 @@ class _StaffTaskCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // 标题
                 Text(
                   title,
                   maxLines: 1,
@@ -1056,9 +1097,7 @@ class _StaffTaskCard extends StatelessWidget {
                     letterSpacing: -0.1,
                   ),
                 ),
-
                 const SizedBox(height: 10),
-
                 Row(
                   children: [
                     Icon(Icons.schedule, size: 16, color: Colors.grey[600]),
@@ -1076,9 +1115,7 @@ class _StaffTaskCard extends StatelessWidget {
                     ),
                   ],
                 ),
-
                 const SizedBox(height: 10),
-
                 Text(
                   footnote,
                   maxLines: 1,
@@ -1092,10 +1129,7 @@ class _StaffTaskCard extends StatelessWidget {
               ],
             ),
           ),
-
           const SizedBox(width: 10),
-
-          // ✅ 右侧：Detail + Handle 同一行、同尺寸
           Row(
             children: [
               SizedBox(
@@ -1104,10 +1138,7 @@ class _StaffTaskCard extends StatelessWidget {
                 child: OutlinedButton(
                   onPressed: onTapDetail,
                   style: OutlinedButton.styleFrom(
-                    side: const BorderSide(
-                      color: Colors.blueAccent,
-                      width: 1.2,
-                    ),
+                    side: const BorderSide(color: Colors.blueAccent, width: 1.2),
                     foregroundColor: Colors.blue[800],
                     backgroundColor: Colors.blue[50],
                     padding: EdgeInsets.zero,
@@ -1152,4 +1183,120 @@ class _StaffTaskCard extends StatelessWidget {
       ),
     );
   }
+}
+
+// =========================
+// ✅ 屏幕中间庆祝弹层：GIF + 彩带 + 星星
+// =========================
+class _CelebrationCenterPopup extends StatefulWidget {
+  final String gifPath;
+
+  const _CelebrationCenterPopup({required this.gifPath});
+
+  @override
+  State<_CelebrationCenterPopup> createState() => _CelebrationCenterPopupState();
+}
+
+class _CelebrationCenterPopupState extends State<_CelebrationCenterPopup> {
+  late final ConfettiController _left;
+  late final ConfettiController _right;
+
+  @override
+  void initState() {
+    super.initState();
+    _left = ConfettiController(duration: const Duration(milliseconds: 1100));
+    _right = ConfettiController(duration: const Duration(milliseconds: 1100));
+    _left.play();
+    _right.play();
+  }
+
+  @override
+  void dispose() {
+    _left.dispose();
+    _right.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // ✅ 只占屏幕约 1/3 的视觉范围：GIF 尺寸控制在 200～240
+    return Material(
+      type: MaterialType.transparency, // ✅ 彻底透明
+      child: Stack(
+        children: [
+          // 左侧星星彩带
+          Align(
+            alignment: Alignment.centerLeft,
+            child: ConfettiWidget(
+              confettiController: _left,
+              blastDirection: 0,
+              emissionFrequency: 0.18,
+              numberOfParticles: 16,
+              maxBlastForce: 18,
+              minBlastForce: 10,
+              gravity: 0.22,
+              shouldLoop: false,
+              createParticlePath: _starPath, // ✅ 星星形状
+            ),
+          ),
+
+          // 右侧星星彩带
+          Align(
+            alignment: Alignment.centerRight,
+            child: ConfettiWidget(
+              confettiController: _right,
+              blastDirection: math.pi,
+              emissionFrequency: 0.18,
+              numberOfParticles: 16,
+              maxBlastForce: 18,
+              minBlastForce: 10,
+              gravity: 0.22,
+              shouldLoop: false,
+              createParticlePath: _starPath,
+            ),
+          ),
+
+          // ✅ 中间 GIF（没有卡片，没有文字）
+          Center(
+            child: SizedBox(
+              width: 220,
+              height: 220,
+              child: Image.asset(
+                widget.gifPath,
+                fit: BoxFit.contain,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+
+// ✅ 星星粒子形状
+Path _starPath(Size size) {
+  final path = Path();
+  final cx = size.width / 2;
+  final cy = size.height / 2;
+  final outerR = math.min(size.width, size.height) / 2;
+  final innerR = outerR * 0.45;
+
+  const points = 5;
+  final step = math.pi / points;
+
+  double angle = -math.pi / 2;
+  for (int i = 0; i < points * 2; i++) {
+    final r = (i.isEven) ? outerR : innerR;
+    final x = cx + r * math.cos(angle);
+    final y = cy + r * math.sin(angle);
+    if (i == 0) {
+      path.moveTo(x, y);
+    } else {
+      path.lineTo(x, y);
+    }
+    angle += step;
+  }
+  path.close();
+  return path;
 }

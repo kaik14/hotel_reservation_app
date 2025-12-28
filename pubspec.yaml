@@ -28,6 +28,7 @@ dependencies:
 # ✅ 确保前面有两个空格，和上面的 cloud_firestore 对齐
   printing: ^5.11.0
   pdf: ^3.10.4
+  confetti: ^0.7.0
 
 dev_dependencies:
   flutter_test:
@@ -54,3 +55,4 @@ flutter:
     - assets/gifs/final4.gif
     - assets/gifs/final5.gif
     - assets/videos/booking_success.mp4
+    - assets/gifs/happy.gif
