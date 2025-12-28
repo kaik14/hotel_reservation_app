@@ -26,6 +26,8 @@ dependencies:
   panorama_viewer: 2.0.7    # ⭐ 改成 panorama_viewer，替代 panorama 插件
   star_rating: ^0.11.0
 
+  confetti: ^0.7.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -51,3 +53,4 @@ flutter:
     - assets/gifs/final4.gif
     - assets/gifs/final5.gif
     - assets/videos/booking_success.mp4
+    - assets/gifs/happy.gif
