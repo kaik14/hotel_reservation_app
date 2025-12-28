@@ -30,7 +30,6 @@ dependencies:
   pdf: ^3.10.4
   confetti: ^0.7.0
 
-  confetti: ^0.7.0
 
 dev_dependencies:
   flutter_test:
