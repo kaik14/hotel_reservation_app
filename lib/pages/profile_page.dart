@@ -115,26 +115,35 @@ class ProfilePage extends StatelessWidget {
           child: Container(height: 0.5, color: Colors.white.withOpacity(0.08)),
         ),
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _buildHeader(context, email, fullName),
-            const SizedBox(height: 20),
+      body: Builder(
+  builder: (context) {
+    final bottomSafe = MediaQuery.of(context).padding.bottom;
 
-            _buildUserDetailsCard(phone, "123 Elm Street, Springfield"),
-            const SizedBox(height: 20),
+    // ✅ 你项目里底部导航栏高度（StaffPage 用 97；Guest Shell 常见 72）
+    // 如果你这页是在带底部栏的页面里，建议先用 97（不确定就用 97 更保险）
+    const bottomNavHeight = 97.0;
 
-            // ✅ Recent Bookings：最多三条、整体高度就三条的量、每条淡蓝色边框
-            _buildRecentBookingsShowcase(context),
-            const SizedBox(height: 20),
+    return SingleChildScrollView(
+      padding: EdgeInsets.fromLTRB(20, 16, 20, 20 + bottomSafe + bottomNavHeight),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildHeader(context, email, fullName),
+          const SizedBox(height: 20),
 
-            _buildEditPreferenceButton(context),
-            // ✅ 删除 Message host 按钮
-          ],
-        ),
+          _buildUserDetailsCard(phone, "123 Elm Street, Springfield"),
+          const SizedBox(height: 20),
+
+          _buildRecentBookingsShowcase(context),
+          const SizedBox(height: 20),
+
+          _buildEditPreferenceButton(context),
+        ],
       ),
+    );
+  },
+),
+
     );
   }
 

@@ -179,6 +179,45 @@ class _ServiceScaffoldState extends State<_ServiceScaffold> {
       ),
     );
   }
+/// ✅ 右下角 Assistant 按钮（当 GIF 被关闭时出现）
+  Widget _buildAssistantButton(BuildContext context) {
+    return Positioned(
+      right: 16,
+      bottom: 16,
+      child: GestureDetector(
+        onTap: () => setState(() => _showAssistant = true),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          decoration: BoxDecoration(
+            color: _LightPalette.accentBlue,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(
+                color: _LightPalette.accentBlue.withOpacity(0.3),
+                blurRadius: 8,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: const Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.pets, size: 16, color: Colors.white),
+              SizedBox(width: 6),
+              Text(
+                'Assistant',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.white,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -265,8 +304,9 @@ class _ServiceScaffoldState extends State<_ServiceScaffold> {
               },
             ),
 
-            // 顶层：可拖动 GIF 助手
+            // ✅ 顶层：GIF 助手 or Assistant 按钮
             if (_showAssistant) _buildFloatingAssistant(context),
+            if (!_showAssistant) _buildAssistantButton(context),
           ],
         ),
       ),
