@@ -1196,15 +1196,80 @@ class _BookingDetailPageState extends State<BookingDetailPage> {
   // 这里为了简洁，我不再重复贴一遍——你直接保留你原来的 _buildDiningDetailUI / _buildSpaDetailUI / _buildUnsupportedServiceUI
   // =========================================================
 
+  // ✅✅✅【已修改】Dining Detail：不再返回 unsupported，直接复用通用详情 UI
   Widget _buildDiningDetailUI(BuildContext context, Map<String, dynamic> data) {
-    // ✅ 这里保持你原来的实现（你贴的那段）
-    // 为了不打乱你现有逻辑，我建议你把你原函数整段粘回这里即可。
-    return _buildUnsupportedServiceUI(context, data);
+    return _buildGenericServiceDetailUI(
+      context,
+      data,
+      serviceTypeLabel: 'Dining',
+      fallbackImage: 'assets/services/dining.jpg',
+      subtitle: 'Dining Reservation',
+      extraRows: [
+        if (data['restaurantName'] != null)
+          _infoRow('Restaurant', data['restaurantName'].toString()),
+        if (data['tableNo'] != null)
+          _infoRow('Table No', data['tableNo'].toString()),
+        if (data['adultCount'] != null || data['childCount'] != null)
+          _infoRow(
+            'Guests',
+            '${(data['adultCount'] ?? 0)} Adult, ${(data['childCount'] ?? 0)} Child',
+          ),
+        if (data['notes'] != null) _infoRow('Notes', data['notes'].toString()),
+      ],
+      onEdit: () async {
+        final changed = await Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => DiningBookingPage(
+              existingBookingId: widget.bookingId,
+              existingData: data,
+            ),
+          ),
+        );
+        if (changed == true && mounted) {
+          await _notifyServiceUpdated(
+            bookingId: widget.bookingId,
+            serviceTypeLabel: 'Dining',
+          );
+          _showTopNotification("Dining booking updated.", Colors.green);
+        }
+      },
+    );
   }
 
+  // ✅✅✅【已修改】Spa Detail：不再返回 unsupported，直接复用通用详情 UI
   Widget _buildSpaDetailUI(BuildContext context, Map<String, dynamic> data) {
-    // ✅ 同上：把你原来的实现整段粘回这里即可。
-    return _buildUnsupportedServiceUI(context, data);
+    return _buildGenericServiceDetailUI(
+      context,
+      data,
+      serviceTypeLabel: 'Spa',
+      fallbackImage: 'assets/services/spa.jpg',
+      subtitle: 'Spa & Wellness',
+      extraRows: [
+        if (data['treatmentName'] != null)
+          _infoRow('Treatment', data['treatmentName'].toString()),
+        if (data['therapist'] != null)
+          _infoRow('Therapist', data['therapist'].toString()),
+      ],
+      onEdit: () async {
+        final changed = await Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => SpaBookingPage(
+              existingBookingId: widget.bookingId,
+              existingData: data,
+            ),
+          ),
+        );
+        if (changed == true && mounted) {
+          await _notifyServiceUpdated(
+            bookingId: widget.bookingId,
+            serviceTypeLabel: 'Spa',
+          );
+          _showTopNotification("Spa booking updated.", Colors.green);
+        }
+      },
+    );
   }
 
   Widget _buildUnsupportedServiceUI(

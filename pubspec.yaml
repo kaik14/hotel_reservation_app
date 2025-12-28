@@ -39,6 +39,10 @@ flutter:
     - assets/icons/hotel_icon.png
     - assets/seacity.jpg
     - assets/models/
+
+    # ✅ 新增：把整个 videos 文件夹加入（不影响你下面已写的两个 mp4）
+    - assets/videos/
+
     - assets/videos/splash.mp4
     - assets/services/     # ⭐ pool.jpg、pool_360.jpg、gym.jpg、gym_360.jpg 等
     - assets/gifs/final2.gif
