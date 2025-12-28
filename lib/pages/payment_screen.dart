@@ -8,7 +8,7 @@ import 'package:intl/intl.dart';
 import 'package:app_state/app_state.dart';
 
 class PaymentScreen extends StatefulWidget {
-  final int totalAmount;
+  final int totalAmount; // cents
   final Map<String, dynamic> bookingDetails;
 
   const PaymentScreen({
@@ -42,7 +42,9 @@ class _PaymentScreenState extends State<PaymentScreen> with PageStateMixin {
 
   Future<void> _checkFpxPaymentStatus() async {
     _isAwaitingFpxResult = false;
-    final result = await Stripe.instance.retrievePaymentIntent(_paymentIntentClientSecret!);
+    final result = await Stripe.instance.retrievePaymentIntent(
+      _paymentIntentClientSecret!,
+    );
 
     if (result.status == PaymentIntentsStatus.Succeeded) {
       final paymentIntentId = _paymentIntentClientSecret!.split('_secret')[0];
@@ -56,7 +58,7 @@ class _PaymentScreenState extends State<PaymentScreen> with PageStateMixin {
   }
 
   Future<void> _handlePayNow() async {
-     if (_isLoading) return;
+    if (_isLoading) return;
     setState(() => _isLoading = true);
 
     final currentUser = FirebaseAuth.instance.currentUser;
@@ -67,13 +69,17 @@ class _PaymentScreenState extends State<PaymentScreen> with PageStateMixin {
     }
 
     try {
-      final docRef = await FirebaseFirestore.instance.collection('customers').doc(currentUser.uid).collection('checkout_sessions').add({
-        'client': 'mobile',
-        'mode': 'payment',
-        'amount': widget.totalAmount,
-        'currency': 'myr',
-        'payment_method_types': ['card', 'fpx'],
-      });
+      final docRef = await FirebaseFirestore.instance
+          .collection('customers')
+          .doc(currentUser.uid)
+          .collection('checkout_sessions')
+          .add({
+            'client': 'mobile',
+            'mode': 'payment',
+            'amount': widget.totalAmount,
+            'currency': 'myr',
+            'payment_method_types': ['card', 'fpx'],
+          });
 
       _subscription = docRef.snapshots().listen((snapshot) async {
         final data = snapshot.data();
@@ -87,7 +93,6 @@ class _PaymentScreenState extends State<PaymentScreen> with PageStateMixin {
           if (mounted) setState(() => _isLoading = false);
         }
       });
-
     } catch (e) {
       _showError("An error occurred: $e");
       if (mounted) setState(() => _isLoading = false);
@@ -102,46 +107,130 @@ class _PaymentScreenState extends State<PaymentScreen> with PageStateMixin {
           merchantDisplayName: 'Hotel Reservation App',
         ),
       );
-      
-      _isAwaitingFpxResult = true; 
-      await Stripe.instance.presentPaymentSheet();
-      
-      await _onPaymentSuccess(clientSecret.split('_secret')[0]);
 
+      _isAwaitingFpxResult = true;
+      await Stripe.instance.presentPaymentSheet();
+
+      await _onPaymentSuccess(clientSecret.split('_secret')[0]);
     } on StripeException catch (e) {
       _isAwaitingFpxResult = false;
-      if (e.error.code == FailureCode.Canceled) { return; }
-      _showError("Booking failed: ${e.error.localizedMessage ?? e.error.message}");
+      if (e.error.code == FailureCode.Canceled) {
+        return;
+      }
+      _showError(
+        "Booking failed: ${e.error.localizedMessage ?? e.error.message}",
+      );
     } catch (e) {
       _isAwaitingFpxResult = false;
       _showError("An unexpected error occurred during payment.");
     } finally {
-      if (mounted && !_isAwaitingFpxResult) { 
-         setState(() => _isLoading = false);
+      if (mounted && !_isAwaitingFpxResult) {
+        setState(() => _isLoading = false);
       }
     }
   }
 
+  // =========================================================
+  // ✅ 支付成功：写 booking + 写 message（Dining / Spa）
+  // =========================================================
   Future<void> _onPaymentSuccess(String paymentIntentId) async {
     final currentUser = FirebaseAuth.instance.currentUser;
     if (currentUser == null) return;
 
+    // 1️⃣ 写 booking
     final finalBookingDetails = {
       ...widget.bookingDetails,
       'createdAt': Timestamp.now(),
       'status': 'paid',
+      'paymentStatus': 'paid',
       'paymentIntentId': paymentIntentId,
     };
+
     await FirebaseFirestore.instance
         .collection('users')
         .doc(currentUser.uid)
         .collection('bookings')
         .add(finalBookingDetails);
 
+    // 2️⃣ 如果是 Service → 写 message（Dining / Spa）
+    if (widget.bookingDetails['bookingType'] == 'service') {
+      final serviceType = (widget.bookingDetails['serviceType'] ?? '')
+          .toString();
+
+      final DateTime? startAt =
+          (widget.bookingDetails['serviceStart'] as Timestamp?)?.toDate();
+
+      final serviceName = (widget.bookingDetails['serviceName'] ?? 'Service')
+          .toString();
+      final totalGuests = widget.bookingDetails['totalGuests'] ?? '-';
+      final totalPriceRM = widget.bookingDetails['totalPriceRM'] ?? 0;
+
+      final dateText = startAt != null
+          ? DateFormat('dd MMM yyyy').format(startAt)
+          : '-';
+      final timeText = startAt != null
+          ? DateFormat('HH:mm').format(startAt)
+          : '-';
+
+      // ===== Dining =====
+      if (serviceType == 'dining') {
+        final msgTitle = 'Dining Booking Confirmed';
+        final msgBody =
+            'Your dining reservation has been confirmed.\n'
+            'Service: $serviceName\n'
+            'Date: $dateText\n'
+            'Time: $timeText\n'
+            'Guests: $totalGuests\n'
+            'Total Paid: RM $totalPriceRM';
+
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(currentUser.uid)
+            .collection('messages')
+            .add({
+              'title': msgTitle,
+              'message': msgBody,
+              'senderIcon': 'system',
+              'timestamp': Timestamp.now(),
+            });
+      }
+
+      // ===== Spa =====
+      if (serviceType == 'spa') {
+        final treatmentLabel =
+            (widget.bookingDetails['treatmentLabel'] ?? 'Treatment').toString();
+        final durationMin = widget.bookingDetails['durationMinutes'] ?? '-';
+
+        final msgTitle = 'Spa Booking Confirmed';
+        final msgBody =
+            'Your spa booking has been confirmed.\n'
+            'Service: $serviceName\n'
+            'Treatment: $treatmentLabel (${durationMin} min)\n'
+            'Date: $dateText\n'
+            'Time: $timeText\n'
+            'Guests: $totalGuests\n'
+            'Total Paid: RM $totalPriceRM';
+
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(currentUser.uid)
+            .collection('messages')
+            .add({
+              'title': msgTitle,
+              'message': msgBody,
+              'senderIcon': 'system',
+              'timestamp': Timestamp.now(),
+            });
+      }
+    }
+
+    // 3️⃣ 跳成功页
     if (mounted) {
       Navigator.pushAndRemoveUntil(
         context,
-        MaterialPageRoute(builder: (_) => BookingSuccessPage(paidAmount: widget.totalAmount)),
+        MaterialPageRoute(
+          builder: (_) => BookingSuccessPage(paidAmount: widget.totalAmount),
+        ),
         (route) => false,
       );
     }
@@ -157,21 +246,18 @@ class _PaymentScreenState extends State<PaymentScreen> with PageStateMixin {
 
   @override
   Widget build(BuildContext context) {
-     final amountFormatted = NumberFormat.currency(
-      locale: 'en_MY', 
+    final amountFormatted = NumberFormat.currency(
+      locale: 'en_MY',
       symbol: 'RM ',
     ).format(widget.totalAmount / 100);
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Complete Your Payment'),
-      ),
+      appBar: AppBar(title: const Text('Complete Your Payment')),
       body: Center(
         child: Padding(
           padding: const EdgeInsets.all(24.0),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               Text(
                 'Total Amount Due',
@@ -180,7 +266,10 @@ class _PaymentScreenState extends State<PaymentScreen> with PageStateMixin {
               const SizedBox(height: 8),
               Text(
                 amountFormatted,
-                style: const TextStyle(fontSize: 36, fontWeight: FontWeight.bold),
+                style: const TextStyle(
+                  fontSize: 36,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
               const SizedBox(height: 32),
               if (_isLoading)
@@ -200,7 +289,10 @@ class _PaymentScreenState extends State<PaymentScreen> with PageStateMixin {
                     ),
                     child: const Text(
                       'Pay Now',
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ),
                 ),

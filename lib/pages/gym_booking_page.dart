@@ -1,10 +1,15 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:hotel_reservation_app/pages/booking_success_page.dart';
-import 'package:panorama_viewer/panorama_viewer.dart'; // ⭐ 改成 panorama_viewer
+import 'package:panorama_viewer/panorama_viewer.dart'; // ⭐ panorama_viewer
 
 class GymBookingPage extends StatefulWidget {
-  const GymBookingPage({super.key});
+  /// ✅ Edit 模式支持：保留历史选项 + 保存更改（无支付）
+  final String? existingBookingId;
+  final Map<String, dynamic>? existingData;
+
+  const GymBookingPage({super.key, this.existingBookingId, this.existingData});
 
   @override
   State<GymBookingPage> createState() => _GymBookingPageState();
@@ -17,108 +22,44 @@ class _GymBookingPageState extends State<GymBookingPage> {
 
   bool _showPanorama = false;
 
+  bool _isSubmitting = false;
+
+  bool get _isEditMode =>
+      widget.existingBookingId != null && widget.existingBookingId!.isNotEmpty;
+
   Future<DocumentSnapshot<Map<String, dynamic>>> _loadService() {
     return FirebaseFirestore.instance.collection('services').doc('gym').get();
   }
 
-  // 选择日期：遵守 closedWeekdays + maxAdvanceDays
-  Future<void> _pickDate(
-    BuildContext context,
-    List<int> closedWeekdays,
-    int maxAdvanceDays,
-  ) async {
-    final today = DateTime.now();
-    final DateTime? picked = await showDatePicker(
-      context: context,
-      initialDate: _selectedDate ?? today,
-      firstDate: today,
-      lastDate: today.add(Duration(days: maxAdvanceDays)),
-    );
-
-    if (picked == null) return;
-
-    final weekdayIndex = picked.weekday % 7;
-    if (closedWeekdays.contains(weekdayIndex)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('The gym is closed on the selected day.')),
-      );
-      return;
-    }
-
-    setState(() {
-      _selectedDate = picked;
-      _selectedTime = null; // 选了新日期，清空旧时间，避免“选了过去时间”
-    });
+  // =================== helper ===================
+  TimeOfDay _parseTimeOfDay(String hhmm) {
+    final parts = hhmm.split(':');
+    final h = int.tryParse(parts[0]) ?? 0;
+    final m = int.tryParse(parts[1]) ?? 0;
+    return TimeOfDay(hour: h, minute: m);
   }
 
-  // 选择时间：必须在营业时间内，且不能早于当前时间（如果选的是今天）
-  Future<void> _pickTime(
-    BuildContext context,
-    TimeOfDay open,
-    TimeOfDay close,
-  ) async {
-    if (_selectedDate == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please select a date first.')),
-      );
-      return;
-    }
+  String _fmtHHmm(TimeOfDay t) =>
+      '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
 
-    final TimeOfDay initial = _selectedTime ?? open;
-
-    final TimeOfDay? picked = await showTimePicker(
-      context: context,
-      initialTime: initial,
-    );
-
-    if (picked == null) return;
-
-    // 检查营业时间
-    if (!_isTimeInRange(picked, open, close)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Please select a time between ${open.format(context)} and ${close.format(context)}.',
-          ),
-        ),
-      );
-      return;
-    }
-
-    // 如果选的是“今天”，不能早于当前时间
-    final now = DateTime.now();
-    final selectedDateTime = DateTime(
+  DateTime? _serviceStartAt() {
+    if (_selectedDate == null || _selectedTime == null) return null;
+    return DateTime(
       _selectedDate!.year,
       _selectedDate!.month,
       _selectedDate!.day,
-      picked.hour,
-      picked.minute,
+      _selectedTime!.hour,
+      _selectedTime!.minute,
     );
-
-    if (selectedDateTime.isBefore(now)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please select a future time.')),
-      );
-      return;
-    }
-
-    setState(() {
-      _selectedTime = picked;
-    });
   }
+
+  int _toMinutes(TimeOfDay t) => t.hour * 60 + t.minute;
 
   bool _isTimeInRange(TimeOfDay t, TimeOfDay start, TimeOfDay end) {
     final tMinutes = t.hour * 60 + t.minute;
     final sMinutes = start.hour * 60 + start.minute;
     final eMinutes = end.hour * 60 + end.minute;
     return tMinutes >= sMinutes && tMinutes <= eMinutes;
-  }
-
-  TimeOfDay _parseTimeOfDay(String hhmm) {
-    final parts = hhmm.split(':');
-    final h = int.tryParse(parts[0]) ?? 0;
-    final m = int.tryParse(parts[1]) ?? 0;
-    return TimeOfDay(hour: h, minute: m);
   }
 
   String _formatDate(DateTime? date) {
@@ -145,6 +86,262 @@ class _GymBookingPageState extends State<GymBookingPage> {
     return months[month - 1];
   }
 
+  // =================== Edit 回填 ===================
+  @override
+  void initState() {
+    super.initState();
+
+    if (_isEditMode && widget.existingData != null) {
+      final d = widget.existingData!;
+
+      // guests
+      final g = d['guests'] ?? d['totalGuests'];
+      if (g is int) _guests = g;
+      if (g is String) _guests = int.tryParse(g) ?? _guests;
+
+      // time
+      DateTime? startAt;
+      final ts = d['serviceStart'] as Timestamp?;
+      if (ts != null) {
+        startAt = ts.toDate();
+      } else {
+        final dateTs = d['serviceDate'] as Timestamp?;
+        final timeStr = d['serviceTime'] as String?;
+        if (dateTs != null && timeStr != null && timeStr.contains(':')) {
+          final date = dateTs.toDate();
+          final parts = timeStr.split(':');
+          final h = int.tryParse(parts[0]) ?? 0;
+          final m = int.tryParse(parts[1]) ?? 0;
+          startAt = DateTime(date.year, date.month, date.day, h, m);
+        }
+      }
+
+      if (startAt != null) {
+        _selectedDate = DateTime(startAt.year, startAt.month, startAt.day);
+        _selectedTime = TimeOfDay(hour: startAt.hour, minute: startAt.minute);
+      }
+    }
+  }
+
+  // =================== pickers ===================
+  Future<void> _pickDate(
+    BuildContext context,
+    List<int> closedWeekdays,
+    int maxAdvanceDays,
+  ) async {
+    final today = DateTime.now();
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: _selectedDate ?? today,
+      firstDate: today,
+      lastDate: today.add(Duration(days: maxAdvanceDays)),
+    );
+
+    if (picked == null) return;
+
+    final weekdayIndex = picked.weekday % 7;
+    if (closedWeekdays.contains(weekdayIndex)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('The gym is closed on the selected day.')),
+      );
+      return;
+    }
+
+    setState(() {
+      _selectedDate = picked;
+      _selectedTime = null;
+    });
+  }
+
+  Future<void> _pickTime(
+    BuildContext context,
+    TimeOfDay open,
+    TimeOfDay close,
+  ) async {
+    if (_selectedDate == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please select a date first.')),
+      );
+      return;
+    }
+
+    final TimeOfDay initial = _selectedTime ?? open;
+
+    final TimeOfDay? picked = await showTimePicker(
+      context: context,
+      initialTime: initial,
+    );
+
+    if (picked == null) return;
+
+    if (!_isTimeInRange(picked, open, close)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Please select a time between ${open.format(context)} and ${close.format(context)}.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    // 今天不能选过去
+    final now = DateTime.now();
+    final selectedDateTime = DateTime(
+      _selectedDate!.year,
+      _selectedDate!.month,
+      _selectedDate!.day,
+      picked.hour,
+      picked.minute,
+    );
+
+    if (selectedDateTime.isBefore(now)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please select a future time.')),
+      );
+      return;
+    }
+
+    setState(() {
+      _selectedTime = picked;
+    });
+  }
+
+  // =================== submit availability ===================
+  bool get canSubmit {
+    if (_selectedDate == null || _selectedTime == null) return false;
+    if (_guests <= 0) return false;
+    return !_isSubmitting;
+  }
+
+  // =================== create/update booking ===================
+  Future<void> _createGymBooking({
+    required String serviceName,
+    required String location,
+    required String serviceImagePath,
+  }) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Not logged in.')));
+      return;
+    }
+
+    final startAt = _serviceStartAt();
+    if (startAt == null) return;
+
+    setState(() => _isSubmitting = true);
+
+    try {
+      final docRef = FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('bookings')
+          .doc();
+
+      await docRef.set({
+        'createdAt': Timestamp.now(),
+        'updatedAt': Timestamp.now(),
+
+        'bookingType': 'service',
+        'serviceType': 'gym',
+        'serviceName': serviceName,
+        'serviceImagePath': serviceImagePath,
+        'location': location,
+
+        'serviceDate': Timestamp.fromDate(
+          DateTime(startAt.year, startAt.month, startAt.day),
+        ),
+        'serviceStart': Timestamp.fromDate(startAt),
+        'serviceTime': _fmtHHmm(_selectedTime!),
+
+        // gym specific
+        'guests': _guests,
+        'totalGuests': _guests,
+
+        // free service
+        'currency': 'MYR',
+        'totalPriceRM': 0,
+      });
+
+      if (!mounted) return;
+      Navigator.of(
+        context,
+      ).push(MaterialPageRoute(builder: (_) => const BookingSuccessPage()));
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Booking failed: $e')));
+      }
+    } finally {
+      if (mounted) setState(() => _isSubmitting = false);
+    }
+  }
+
+  Future<void> _updateGymBooking({
+    required String serviceName,
+    required String location,
+    required String serviceImagePath,
+  }) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Not logged in.')));
+      return;
+    }
+
+    final startAt = _serviceStartAt();
+    if (startAt == null) return;
+
+    setState(() => _isSubmitting = true);
+
+    try {
+      final docRef = FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('bookings')
+          .doc(widget.existingBookingId);
+
+      await docRef.update({
+        'updatedAt': Timestamp.now(),
+
+        'bookingType': 'service',
+        'serviceType': 'gym',
+        'serviceName': serviceName,
+        'serviceImagePath': serviceImagePath,
+        'location': location,
+
+        'serviceDate': Timestamp.fromDate(
+          DateTime(startAt.year, startAt.month, startAt.day),
+        ),
+        'serviceStart': Timestamp.fromDate(startAt),
+        'serviceTime': _fmtHHmm(_selectedTime!),
+
+        'guests': _guests,
+        'totalGuests': _guests,
+
+        'currency': 'MYR',
+        'totalPriceRM': 0,
+      });
+
+      if (!mounted) return;
+      // ✅ 保存更改：返回 true 给 BookingDetail
+      Navigator.of(context).pop(true);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Update failed: $e')));
+      }
+    } finally {
+      if (mounted) setState(() => _isSubmitting = false);
+    }
+  }
+
+  // =================== UI ===================
   @override
   Widget build(BuildContext context) {
     return Theme(
@@ -178,7 +375,7 @@ class _GymBookingPageState extends State<GymBookingPage> {
       child: Scaffold(
         backgroundColor: _LightPalette.bg,
         appBar: AppBar(
-          title: const Text('Gym Booking'),
+          title: Text(_isEditMode ? 'Edit Gym Booking' : 'Gym Booking'),
           bottom: PreferredSize(
             preferredSize: const Size.fromHeight(0.5),
             child: Container(
@@ -236,7 +433,7 @@ class _GymBookingPageState extends State<GymBookingPage> {
             final closeTime = _parseTimeOfDay(closeStr);
 
             return SingleChildScrollView(
-              padding: const EdgeInsets.only(bottom: 80),
+              padding: const EdgeInsets.only(bottom: 90),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -347,7 +544,7 @@ class _GymBookingPageState extends State<GymBookingPage> {
                   ),
                   const SizedBox(height: 16),
 
-                  // Booking Details 卡片
+                  // Booking Details
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     child: Text(
@@ -370,7 +567,6 @@ class _GymBookingPageState extends State<GymBookingPage> {
                         padding: const EdgeInsets.all(16),
                         child: Column(
                           children: [
-                            // Date
                             _bookingRow(
                               context: context,
                               icon: Icons.calendar_today_outlined,
@@ -385,7 +581,6 @@ class _GymBookingPageState extends State<GymBookingPage> {
                               ),
                             ),
                             const Divider(height: 24),
-                            // Time
                             _bookingRow(
                               context: context,
                               icon: Icons.access_time,
@@ -397,7 +592,6 @@ class _GymBookingPageState extends State<GymBookingPage> {
                                   _pickTime(context, openTime, closeTime),
                             ),
                             const Divider(height: 24),
-                            // Guests
                             Row(
                               children: [
                                 const Icon(Icons.person_outline),
@@ -412,21 +606,13 @@ class _GymBookingPageState extends State<GymBookingPage> {
                                 ),
                                 IconButton(
                                   onPressed: _guests > 1
-                                      ? () {
-                                          setState(() {
-                                            _guests--;
-                                          });
-                                        }
+                                      ? () => setState(() => _guests--)
                                       : null,
                                   icon: const Icon(Icons.remove_circle_outline),
                                 ),
                                 Text('$_guests'),
                                 IconButton(
-                                  onPressed: () {
-                                    setState(() {
-                                      _guests++;
-                                    });
-                                  },
+                                  onPressed: () => setState(() => _guests++),
                                   icon: const Icon(Icons.add_circle_outline),
                                 ),
                               ],
@@ -490,6 +676,8 @@ class _GymBookingPageState extends State<GymBookingPage> {
             );
           },
         ),
+
+        // ✅ 按你的规则：创建=Confirm Booking；编辑=Save Changes（无支付）
         bottomNavigationBar: SafeArea(
           top: false,
           child: Padding(
@@ -508,19 +696,52 @@ class _GymBookingPageState extends State<GymBookingPage> {
                     borderRadius: BorderRadius.circular(24),
                   ),
                 ),
-                onPressed: _selectedDate == null || _selectedTime == null
-                    ? null
-                    : () {
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => const BookingSuccessPage(),
-                          ),
-                        );
-                      },
-                child: const Text(
-                  'Confirm Booking',
-                  style: TextStyle(fontWeight: FontWeight.w600),
-                ),
+                onPressed: canSubmit
+                    ? () async {
+                        final snap = await _loadService();
+                        if (!snap.exists) return;
+                        final serviceData = snap.data() ?? {};
+
+                        final serviceName =
+                            (serviceData['name'] as String?) ??
+                            'Gym & Fitness Center';
+                        final ui =
+                            (serviceData['ui'] ?? {}) as Map<String, dynamic>;
+                        final location =
+                            (ui['location'] as String?) ??
+                            'Level 5, Fitness Center';
+
+                        // ✅ gym 不需要支付，统一写 0
+                        const serviceImagePath = 'assets/services/gym.jpg';
+
+                        if (_isEditMode) {
+                          await _updateGymBooking(
+                            serviceName: serviceName,
+                            location: location,
+                            serviceImagePath: serviceImagePath,
+                          );
+                        } else {
+                          await _createGymBooking(
+                            serviceName: serviceName,
+                            location: location,
+                            serviceImagePath: serviceImagePath,
+                          );
+                        }
+                      }
+                    : null,
+                child: _isSubmitting
+                    ? const SizedBox(
+                        height: 20,
+                        width: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : Text(
+                        _isEditMode ? 'Save Changes' : 'Confirm Booking',
+                        style: const TextStyle(fontWeight: FontWeight.w600),
+                      ),
               ),
             ),
           ),
@@ -530,8 +751,7 @@ class _GymBookingPageState extends State<GymBookingPage> {
   }
 }
 
-// 小组件 & 工具函数
-
+// 小组件
 Widget _bookingRow({
   required BuildContext context,
   required IconData icon,
@@ -574,7 +794,6 @@ Widget _bullet(String text) {
   );
 }
 
-/// 和 ServicePage 一致的浅色调色板
 class _LightPalette {
   static const bg = Color.fromARGB(255, 222, 228, 236);
   static const textPrimary = Color(0xFF0F1722);

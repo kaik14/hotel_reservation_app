@@ -1,10 +1,19 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:hotel_reservation_app/pages/booking_success_page.dart';
 import 'package:panorama_viewer/panorama_viewer.dart';
 
 class LaundryIroningBookingPage extends StatefulWidget {
-  const LaundryIroningBookingPage({super.key});
+  /// ✅ Edit 模式支持（和 Dining/Spa/Housekeeping 一样）
+  final String? existingBookingId;
+  final Map<String, dynamic>? existingData;
+
+  const LaundryIroningBookingPage({
+    super.key,
+    this.existingBookingId,
+    this.existingData,
+  });
 
   @override
   State<LaundryIroningBookingPage> createState() =>
@@ -16,12 +25,82 @@ class _LaundryIroningBookingPageState extends State<LaundryIroningBookingPage> {
   TimeOfDay? _pickupTime;
   TimeOfDay? _returnTime;
 
-  // 房间号 & 衣服件数
   final TextEditingController _roomController = TextEditingController();
   final TextEditingController _clothesController = TextEditingController();
 
-  // 360° 控制
   bool _showPanorama = false;
+
+  bool _isSubmitting = false;
+
+  bool get _isEditMode =>
+      widget.existingBookingId != null && widget.existingBookingId!.isNotEmpty;
+
+  @override
+  void initState() {
+    super.initState();
+
+    // ✅ Edit 回填：保留历史选项
+    if (_isEditMode && widget.existingData != null) {
+      final data = widget.existingData!;
+
+      // room
+      _roomController.text =
+          (data['roomNumber'] ?? data['roomNo'] ?? data['room'] ?? '')
+              .toString();
+
+      // clothes count
+      final clothes =
+          (data['clothesCount'] ??
+                  data['itemsCount'] ??
+                  data['numberOfItems'] ??
+                  data['items'] ??
+                  '')
+              .toString();
+      _clothesController.text = clothes;
+
+      // time (serviceStart 优先；否则 serviceDate + pickupTime/returnTime)
+      DateTime? startAt;
+      final ts = data['serviceStart'] as Timestamp?;
+      if (ts != null) {
+        startAt = ts.toDate();
+      } else {
+        final dateTs = data['serviceDate'] as Timestamp?;
+        final pickupStr =
+            (data['pickupTime'] ?? data['serviceTime']) as String?;
+        if (dateTs != null && pickupStr != null && pickupStr.contains(':')) {
+          final d = dateTs.toDate();
+          final parts = pickupStr.split(':');
+          final h = int.tryParse(parts[0]) ?? 0;
+          final m = int.tryParse(parts[1]) ?? 0;
+          startAt = DateTime(d.year, d.month, d.day, h, m);
+        }
+      }
+
+      if (startAt != null) {
+        _selectedDate = DateTime(startAt.year, startAt.month, startAt.day);
+        _pickupTime = TimeOfDay(hour: startAt.hour, minute: startAt.minute);
+      }
+
+      // return time
+      final retStr = (data['returnTime'] as String?);
+      if (retStr != null && retStr.contains(':')) {
+        final parts = retStr.split(':');
+        final h = int.tryParse(parts[0]) ?? 0;
+        final m = int.tryParse(parts[1]) ?? 0;
+        _returnTime = TimeOfDay(hour: h, minute: m);
+      } else {
+        // fallback: serviceEnd Timestamp
+        final endTs = data['serviceEnd'] as Timestamp?;
+        if (endTs != null) {
+          final endAt = endTs.toDate();
+          _returnTime = TimeOfDay(hour: endAt.hour, minute: endAt.minute);
+          if (_selectedDate == null) {
+            _selectedDate = DateTime(endAt.year, endAt.month, endAt.day);
+          }
+        }
+      }
+    }
+  }
 
   @override
   void dispose() {
@@ -30,16 +109,15 @@ class _LaundryIroningBookingPageState extends State<LaundryIroningBookingPage> {
     super.dispose();
   }
 
-  /// ⚠️ 这里一定要和 Firestore 文档 ID 一样：laundry
+  /// ⚠️ Firestore 文档 ID：laundry
   Future<DocumentSnapshot<Map<String, dynamic>>> _loadService() {
     return FirebaseFirestore.instance
         .collection('services')
-        .doc('laundry') // ← 已改成 laundry
+        .doc('laundry')
         .get();
   }
 
-  // ---------- 帮助函数 ----------
-
+  // ---------- helpers ----------
   TimeOfDay _parseTimeOfDay(String hhmm) {
     final parts = hhmm.split(':');
     final h = int.tryParse(parts[0]) ?? 0;
@@ -54,6 +132,13 @@ class _LaundryIroningBookingPageState extends State<LaundryIroningBookingPage> {
     final sM = _toMinutes(start);
     final eM = _toMinutes(end);
     return tM >= sM && tM <= eM;
+  }
+
+  bool _isValidReturnTime(TimeOfDay pickup, TimeOfDay ret) {
+    final p = _toMinutes(pickup);
+    final r = _toMinutes(ret);
+    const threeHours = 3 * 60;
+    return r > p && (r - p) >= threeHours;
   }
 
   String _formatDate(DateTime? date) {
@@ -80,12 +165,32 @@ class _LaundryIroningBookingPageState extends State<LaundryIroningBookingPage> {
     return months[month - 1];
   }
 
-  // ---------- 交互逻辑 ----------
+  DateTime? _pickupDateTime() {
+    if (_selectedDate == null || _pickupTime == null) return null;
+    return DateTime(
+      _selectedDate!.year,
+      _selectedDate!.month,
+      _selectedDate!.day,
+      _pickupTime!.hour,
+      _pickupTime!.minute,
+    );
+  }
 
-  // 只能预约「今天 & 明天」（maxAdvanceDays 通常为 2）
+  DateTime? _returnDateTime() {
+    if (_selectedDate == null || _returnTime == null) return null;
+    return DateTime(
+      _selectedDate!.year,
+      _selectedDate!.month,
+      _selectedDate!.day,
+      _returnTime!.hour,
+      _returnTime!.minute,
+    );
+  }
+
+  // ---------- interactions ----------
   Future<void> _pickDate(BuildContext context, int maxAdvanceDays) async {
     final today = DateTime.now();
-    final DateTime? picked = await showDatePicker(
+    final picked = await showDatePicker(
       context: context,
       initialDate: _selectedDate ?? today,
       firstDate: today,
@@ -101,7 +206,6 @@ class _LaundryIroningBookingPageState extends State<LaundryIroningBookingPage> {
     });
   }
 
-  // 取衣时间（不能早于当前时间 & 营业时间外）
   Future<void> _pickPickupTime(
     BuildContext context,
     TimeOfDay open,
@@ -114,16 +218,10 @@ class _LaundryIroningBookingPageState extends State<LaundryIroningBookingPage> {
       return;
     }
 
-    final TimeOfDay initial = _pickupTime ?? open;
-
-    final TimeOfDay? picked = await showTimePicker(
-      context: context,
-      initialTime: initial,
-    );
-
+    final initial = _pickupTime ?? open;
+    final picked = await showTimePicker(context: context, initialTime: initial);
     if (picked == null) return;
 
-    // 营业时间检查
     if (!_isTimeInRange(picked, open, close)) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -156,7 +254,6 @@ class _LaundryIroningBookingPageState extends State<LaundryIroningBookingPage> {
 
     setState(() {
       _pickupTime = picked;
-      // 如果已有归还时间但不合法，则清空
       if (_returnTime != null &&
           !_isValidReturnTime(_pickupTime!, _returnTime!)) {
         _returnTime = null;
@@ -164,7 +261,6 @@ class _LaundryIroningBookingPageState extends State<LaundryIroningBookingPage> {
     });
   }
 
-  // 归还时间：> 取衣时间 & 至少间隔 3 小时 & 在营业时间内
   Future<void> _pickReturnTime(
     BuildContext context,
     TimeOfDay open,
@@ -176,7 +272,6 @@ class _LaundryIroningBookingPageState extends State<LaundryIroningBookingPage> {
       );
       return;
     }
-
     if (_pickupTime == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please select pickup time first.')),
@@ -184,13 +279,8 @@ class _LaundryIroningBookingPageState extends State<LaundryIroningBookingPage> {
       return;
     }
 
-    final TimeOfDay initial = _returnTime ?? _pickupTime!;
-
-    final TimeOfDay? picked = await showTimePicker(
-      context: context,
-      initialTime: initial,
-    );
-
+    final initial = _returnTime ?? _pickupTime!;
+    final picked = await showTimePicker(context: context, initialTime: initial);
     if (picked == null) return;
 
     if (!_isTimeInRange(picked, open, close)) {
@@ -215,38 +305,162 @@ class _LaundryIroningBookingPageState extends State<LaundryIroningBookingPage> {
       return;
     }
 
-    setState(() {
-      _returnTime = picked;
-    });
+    setState(() => _returnTime = picked);
   }
 
-  bool _isValidReturnTime(TimeOfDay pickup, TimeOfDay ret) {
-    final p = _toMinutes(pickup);
-    final r = _toMinutes(ret);
-    const threeHours = 3 * 60;
-    return r > p && (r - p) >= threeHours;
-  }
-
-  // ✅ 提交按钮是否可以点
   bool get canSubmit {
-    if (_selectedDate == null || _pickupTime == null || _returnTime == null) {
+    if (_selectedDate == null || _pickupTime == null || _returnTime == null)
       return false;
-    }
-
-    if (_roomController.text.trim().isEmpty) {
-      return false;
-    }
-
+    if (_roomController.text.trim().isEmpty) return false;
     final clothes = int.tryParse(_clothesController.text.trim());
-    if (clothes == null || clothes <= 0) {
+    if (clothes == null || clothes <= 0) return false;
+    if (_pickupTime != null &&
+        _returnTime != null &&
+        !_isValidReturnTime(_pickupTime!, _returnTime!)) {
       return false;
     }
+    return !_isSubmitting;
+  }
 
-    return true;
+  String _fmtHHmm(TimeOfDay t) =>
+      '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+
+  // ✅ Create (free service)
+  Future<void> _createLaundryBooking({
+    required String serviceName,
+    required String location,
+  }) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Not logged in.')));
+      return;
+    }
+
+    final pickupAt = _pickupDateTime();
+    final returnAt = _returnDateTime();
+    if (pickupAt == null || returnAt == null) return;
+
+    setState(() => _isSubmitting = true);
+
+    try {
+      final docRef = FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('bookings')
+          .doc();
+
+      await docRef.set({
+        'createdAt': Timestamp.now(),
+        'updatedAt': Timestamp.now(),
+
+        'bookingType': 'service',
+        'serviceType': 'laundry',
+        'serviceName': serviceName,
+        'serviceImagePath': 'assets/services/laundry.jpg',
+        'location': location,
+
+        'serviceDate': Timestamp.fromDate(
+          DateTime(pickupAt.year, pickupAt.month, pickupAt.day),
+        ),
+
+        // we use pickup as serviceStart (统一给 BookingDetail 用)
+        'serviceStart': Timestamp.fromDate(pickupAt),
+        'serviceEnd': Timestamp.fromDate(returnAt),
+
+        'pickupTime': _fmtHHmm(_pickupTime!),
+        'returnTime': _fmtHHmm(_returnTime!),
+
+        'roomNumber': _roomController.text.trim(),
+        'clothesCount': int.parse(_clothesController.text.trim()),
+
+        // free service
+        'currency': 'MYR',
+        'totalPriceRM': 0,
+      });
+
+      if (!mounted) return;
+      Navigator.of(
+        context,
+      ).push(MaterialPageRoute(builder: (_) => const BookingSuccessPage()));
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Booking failed: $e')));
+      }
+    } finally {
+      if (mounted) setState(() => _isSubmitting = false);
+    }
+  }
+
+  // ✅ Update (Save changes, no payment)
+  Future<void> _updateLaundryBooking({
+    required String serviceName,
+    required String location,
+  }) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Not logged in.')));
+      return;
+    }
+
+    final pickupAt = _pickupDateTime();
+    final returnAt = _returnDateTime();
+    if (pickupAt == null || returnAt == null) return;
+
+    setState(() => _isSubmitting = true);
+
+    try {
+      final docRef = FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('bookings')
+          .doc(widget.existingBookingId);
+
+      await docRef.update({
+        'updatedAt': Timestamp.now(),
+
+        'bookingType': 'service',
+        'serviceType': 'laundry',
+        'serviceName': serviceName,
+        'serviceImagePath': 'assets/services/laundry.jpg',
+        'location': location,
+
+        'serviceDate': Timestamp.fromDate(
+          DateTime(pickupAt.year, pickupAt.month, pickupAt.day),
+        ),
+
+        'serviceStart': Timestamp.fromDate(pickupAt),
+        'serviceEnd': Timestamp.fromDate(returnAt),
+
+        'pickupTime': _fmtHHmm(_pickupTime!),
+        'returnTime': _fmtHHmm(_returnTime!),
+
+        'roomNumber': _roomController.text.trim(),
+        'clothesCount': int.parse(_clothesController.text.trim()),
+
+        'currency': 'MYR',
+        'totalPriceRM': 0,
+      });
+
+      if (!mounted) return;
+      Navigator.of(context).pop(true);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Update failed: $e')));
+      }
+    } finally {
+      if (mounted) setState(() => _isSubmitting = false);
+    }
   }
 
   // ---------- UI ----------
-
   @override
   Widget build(BuildContext context) {
     return Theme(
@@ -280,7 +494,11 @@ class _LaundryIroningBookingPageState extends State<LaundryIroningBookingPage> {
       child: Scaffold(
         backgroundColor: _LightPalette.bg,
         appBar: AppBar(
-          title: const Text('Laundry & Ironing Booking'),
+          title: Text(
+            _isEditMode
+                ? 'Edit Laundry & Ironing'
+                : 'Laundry & Ironing Booking',
+          ),
           bottom: PreferredSize(
             preferredSize: const Size.fromHeight(0.5),
             child: Container(
@@ -307,7 +525,7 @@ class _LaundryIroningBookingPageState extends State<LaundryIroningBookingPage> {
             final description =
                 data['description'] as String? ??
                 'Laundry and ironing pickup & return.';
-            final isFree = data['isFree'] as bool? ?? false;
+            final isFree = data['isFree'] as bool? ?? true;
 
             final schedule = (data['schedule'] ?? {}) as Map<String, dynamic>;
             final openStr = schedule['open'] as String? ?? '07:00';
@@ -315,7 +533,6 @@ class _LaundryIroningBookingPageState extends State<LaundryIroningBookingPage> {
             final openTime = _parseTimeOfDay(openStr);
             final closeTime = _parseTimeOfDay(closeStr);
 
-            // 最多提前 2 天（今天 + 明天）
             final maxAdvanceDays = data['maxAdvanceDays'] as int? ?? 2;
 
             final ui = (data['ui'] ?? {}) as Map<String, dynamic>;
@@ -326,11 +543,11 @@ class _LaundryIroningBookingPageState extends State<LaundryIroningBookingPage> {
                 'Please pack your clothes in a laundry bag before pickup.';
 
             return SingleChildScrollView(
-              padding: const EdgeInsets.only(bottom: 80),
+              padding: const EdgeInsets.only(bottom: 90),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // 顶部图片 + 360°
+                  // Top image + 360
                   Padding(
                     padding: const EdgeInsets.all(16),
                     child: ClipRRect(
@@ -365,11 +582,9 @@ class _LaundryIroningBookingPageState extends State<LaundryIroningBookingPage> {
                                   borderRadius: BorderRadius.circular(20),
                                 ),
                               ),
-                              onPressed: () {
-                                setState(() {
-                                  _showPanorama = !_showPanorama;
-                                });
-                              },
+                              onPressed: () => setState(() {
+                                _showPanorama = !_showPanorama;
+                              }),
                               icon: const Icon(Icons.threesixty),
                               label: Text(
                                 _showPanorama ? 'Exit 360°' : '360° View',
@@ -381,7 +596,7 @@ class _LaundryIroningBookingPageState extends State<LaundryIroningBookingPage> {
                     ),
                   ),
 
-                  // 标题 + 标签
+                  // Title + Free label
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     child: Row(
@@ -460,7 +675,7 @@ class _LaundryIroningBookingPageState extends State<LaundryIroningBookingPage> {
                         padding: const EdgeInsets.all(16),
                         child: Column(
                           children: [
-                            // 房间号
+                            // room
                             Row(
                               children: [
                                 const Icon(Icons.door_front_door_outlined),
@@ -479,7 +694,7 @@ class _LaundryIroningBookingPageState extends State<LaundryIroningBookingPage> {
                             ),
                             const Divider(height: 24),
 
-                            // 衣服件数
+                            // clothes count
                             Row(
                               children: [
                                 const Icon(Icons.checkroom_outlined),
@@ -499,7 +714,7 @@ class _LaundryIroningBookingPageState extends State<LaundryIroningBookingPage> {
                             ),
                             const Divider(height: 24),
 
-                            // 日期
+                            // date
                             _bookingRow(
                               context: context,
                               icon: Icons.calendar_today_outlined,
@@ -509,7 +724,7 @@ class _LaundryIroningBookingPageState extends State<LaundryIroningBookingPage> {
                             ),
                             const Divider(height: 24),
 
-                            // 上门取衣时间
+                            // pickup
                             _bookingRow(
                               context: context,
                               icon: Icons.access_time,
@@ -522,7 +737,7 @@ class _LaundryIroningBookingPageState extends State<LaundryIroningBookingPage> {
                             ),
                             const Divider(height: 24),
 
-                            // 归还时间
+                            // return
                             _bookingRow(
                               context: context,
                               icon: Icons.access_time_outlined,
@@ -541,7 +756,7 @@ class _LaundryIroningBookingPageState extends State<LaundryIroningBookingPage> {
 
                   const SizedBox(height: 16),
 
-                  // 规则
+                  // Rules
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     child: Text(
@@ -588,6 +803,7 @@ class _LaundryIroningBookingPageState extends State<LaundryIroningBookingPage> {
             );
           },
         ),
+
         bottomNavigationBar: SafeArea(
           top: false,
           child: Padding(
@@ -607,18 +823,46 @@ class _LaundryIroningBookingPageState extends State<LaundryIroningBookingPage> {
                   ),
                 ),
                 onPressed: canSubmit
-                    ? () {
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => const BookingSuccessPage(),
-                          ),
-                        );
+                    ? () async {
+                        final snap = await _loadService();
+                        if (!snap.exists) return;
+                        final serviceData = snap.data() ?? {};
+
+                        final serviceName =
+                            (serviceData['name'] as String?) ??
+                            'Laundry & Ironing Service';
+                        final ui =
+                            (serviceData['ui'] ?? {}) as Map<String, dynamic>;
+                        final location =
+                            (ui['location'] as String?) ??
+                            'Laundry & Services Counter';
+
+                        if (_isEditMode) {
+                          await _updateLaundryBooking(
+                            serviceName: serviceName,
+                            location: location,
+                          );
+                        } else {
+                          await _createLaundryBooking(
+                            serviceName: serviceName,
+                            location: location,
+                          );
+                        }
                       }
                     : null,
-                child: const Text(
-                  'Confirm Booking',
-                  style: TextStyle(fontWeight: FontWeight.w600),
-                ),
+                child: _isSubmitting
+                    ? const SizedBox(
+                        height: 20,
+                        width: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : Text(
+                        _isEditMode ? 'Save Changes' : 'Confirm Booking',
+                        style: const TextStyle(fontWeight: FontWeight.w600),
+                      ),
               ),
             ),
           ),
@@ -629,7 +873,6 @@ class _LaundryIroningBookingPageState extends State<LaundryIroningBookingPage> {
 }
 
 // ---------- 公用小组件 ----------
-
 Widget _bookingRow({
   required BuildContext context,
   required IconData icon,
@@ -672,7 +915,7 @@ Widget _bullet(String text) {
   );
 }
 
-/// 和 ServicePage 一致的浅色调色板
+/// 浅色调色板
 class _LightPalette {
   static const bg = Color.fromARGB(255, 222, 228, 236);
   static const textPrimary = Color(0xFF0F1722);
