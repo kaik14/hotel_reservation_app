@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import '../utils/booking_availability.dart';
 
 /// ------- 房间在地图上的数据 -------
 
@@ -98,8 +97,8 @@ const List<MapRoom> floor11Rooms = [
   MapRoom(roomNo: '1103', left: 0.17, top: 0.02, width: 0.12, height: 0.38),
   MapRoom(roomNo: '1105', left: 0.29, top: 0.02, width: 0.12, height: 0.38),
   MapRoom(roomNo: '1107', left: 0.41, top: 0.02, width: 0.11, height: 0.38),
-  MapRoom(roomNo: '1109', left: 0.60, top: 0.02, width: 0.12, height: 0.38),
-  MapRoom(roomNo: '1111', left: 0.72, top: 0.02, width: 0.09, height: 0.38),
+  MapRoom(roomNo: '1111', left: 0.60, top: 0.02, width: 0.12, height: 0.38),
+  MapRoom(roomNo: '1113', left: 0.72, top: 0.02, width: 0.09, height: 0.38),
   MapRoom(roomNo: '1113', left: 0.81, top: 0.02, width: 0.08, height: 0.38),
   MapRoom(roomNo: '1115', left: 0.89, top: 0.02, width: 0.08, height: 0.38),
 
@@ -446,10 +445,6 @@ class RoomMapSelector extends StatelessWidget {
   Widget build(BuildContext context) {
     final rooms = getRoomsForFloor(floorId);
 
-    // ✅ 统一可用房号格式（避免 801 vs 0801 对不上）
-    final availableSet = availableRooms.map(normalizeRoomNo).toSet();
-    final selected = selectedRoom == null ? null : normalizeRoomNo(selectedRoom!);
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -467,6 +462,7 @@ class RoomMapSelector extends StatelessWidget {
 
               return Stack(
                 children: [
+                  // 背景框
                   Container(
                     decoration: BoxDecoration(
                       color: Colors.grey[100],
@@ -475,15 +471,19 @@ class RoomMapSelector extends StatelessWidget {
                     ),
                   ),
 
+                  // ------- 房间块（可点击） -------
                   for (final mapRoom in rooms)
                     Positioned(
                       left: mapRoom.left * w,
                       top: mapRoom.top * h,
                       width: mapRoom.width * w,
                       height: mapRoom.height * h,
-                      child: _buildRoomBox(mapRoom, availableSet, selected),
+                      child: _buildRoomBox(mapRoom),
                     ),
 
+                  // ------- 楼梯 & 电梯（不可点击，只是标注） -------
+
+                  // 左下楼梯
                   Positioned(
                     left: 0.02 * w,
                     top: 0.60 * h,
@@ -491,6 +491,8 @@ class RoomMapSelector extends StatelessWidget {
                     height: 0.38 * h,
                     child: _buildUtilityBox("Staircase", Icons.stairs),
                   ),
+
+                  // 右下楼梯
                   Positioned(
                     left: 0.91 * w,
                     top: 0.60 * h,
@@ -498,6 +500,8 @@ class RoomMapSelector extends StatelessWidget {
                     height: 0.38 * h,
                     child: _buildUtilityBox("Staircase", Icons.stairs),
                   ),
+
+                  // 中间电梯
                   Positioned(
                     left: 0.52 * w,
                     top: 0.02 * h,
@@ -512,6 +516,7 @@ class RoomMapSelector extends StatelessWidget {
         ),
         const SizedBox(height: 8),
 
+        // 房间状态图例
         Row(
           children: [
             _buildLegendBox(Colors.blue, "Available"),
@@ -523,18 +528,22 @@ class RoomMapSelector extends StatelessWidget {
         ),
         const SizedBox(height: 4),
 
+
         Text(
-          selected == null ? "Selected Room: -" : "Selected Room: $selected",
+          selectedRoom == null
+              ? "Selected Room: -"
+              : "Selected Room: $selectedRoom",
           style: const TextStyle(fontWeight: FontWeight.w500),
         ),
       ],
     );
   }
 
-  Widget _buildRoomBox(MapRoom mapRoom, Set<String> availableSet, String? selected) {
-    final mapNo = normalizeRoomNo(mapRoom.roomNo);
-    final bool isAvailable = availableSet.contains(mapNo);
-    final bool isSelected = selected == mapNo;
+  /// ------- 单个房间块（可点击） -------
+
+  Widget _buildRoomBox(MapRoom mapRoom) {
+    final bool isAvailable = availableRooms.contains(mapRoom.roomNo);
+    final bool isSelected = selectedRoom == mapRoom.roomNo;
 
     Color borderColor;
     Color fillColor;
@@ -554,8 +563,8 @@ class RoomMapSelector extends StatelessWidget {
 
     return GestureDetector(
       onTap: () {
-        if (!isAvailable) return;
-        onSelected(mapNo);
+        if (!isAvailable) return; // 已被预订不能选
+        onSelected(mapRoom.roomNo);
       },
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 160),
@@ -568,7 +577,7 @@ class RoomMapSelector extends StatelessWidget {
         child: FittedBox(
           fit: BoxFit.scaleDown,
           child: Text(
-            mapNo,
+            mapRoom.roomNo,
             style: TextStyle(
               fontSize: 12,
               color: !isAvailable ? Colors.grey.shade700 : Colors.black,
@@ -578,6 +587,8 @@ class RoomMapSelector extends StatelessWidget {
       ),
     );
   }
+
+  /// ------- 楼梯 / 电梯标注块（不可点击） -------
 
   Widget _buildUtilityBox(String label, IconData icon) {
     return IgnorePointer(
@@ -609,6 +620,8 @@ class RoomMapSelector extends StatelessWidget {
       ),
     );
   }
+
+  /// ------- 图例小方块 -------
 
   Widget _buildLegendBox(Color color, String label, {bool filled = false}) {
     return Row(

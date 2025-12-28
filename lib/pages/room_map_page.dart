@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 import 'room_map_selector.dart';
 import '../utils/booking_availability.dart';
 
@@ -33,14 +35,50 @@ class _RoomMapPageState extends State<RoomMapPage> {
   String? _selectedRoom;
 
   bool _loading = true;
+
+  /// ✅ 这个是“该房型所有房间”（库存，不考虑是否已被订）
+  List<String> _allRoomsAll = [];
+
+  /// ✅ 这个是“真正可选房间”（= allRooms - booked）
   List<String> _availableRoomsAll = [];
 
-  /// ✅ 把 floorId 统一成两位数格式：8F -> 08F
+  /// ✅ 被订房：按楼层缓存
+  final Map<String, Set<String>> _bookedRoomsByFloor = {};
+
+  /// ✅ floorId 统一成两位数：8F -> 08F
   String _normalizeFloorId(String floorId) {
     final m = RegExp(r'^(\d{1,2})F$').firstMatch(floorId.trim());
     if (m == null) return floorId.trim();
     final n = int.tryParse(m.group(1)!) ?? 0;
     return '${n.toString().padLeft(2, '0')}F';
+  }
+
+  /// ✅ DateTime -> "YYYY-MM-DD"
+  String _ymd(DateTime d) {
+    final x = DateTime(d.year, d.month, d.day);
+    return '${x.year.toString().padLeft(4, '0')}-'
+        '${x.month.toString().padLeft(2, '0')}-'
+        '${x.day.toString().padLeft(2, '0')}';
+  }
+
+  /// ✅ activeDates（按天）：checkIn 含，checkOut 不含
+  List<String> _buildActiveDates(DateTime checkIn, DateTime checkOut) {
+    final start = DateTime(checkIn.year, checkIn.month, checkIn.day);
+    final end = DateTime(checkOut.year, checkOut.month, checkOut.day);
+
+    final days = <String>[];
+    for (var d = start; d.isBefore(end); d = d.add(const Duration(days: 1))) {
+      days.add(_ymd(d));
+    }
+    return days;
+  }
+
+  /// ✅ 从房号提取楼层（0801 -> 08F，1208 -> 12F）
+  String? _floorIdFromRoomNo(String roomNo) {
+    final rn = normalizeRoomNo(roomNo);
+    final m = RegExp(r'^(\d{2})').firstMatch(rn);
+    if (m == null) return null;
+    return '${m.group(1)}F';
   }
 
   @override
@@ -53,30 +91,50 @@ class _RoomMapPageState extends State<RoomMapPage> {
 
     _currentFloorId = _normalizeFloorId(widget.floorId);
 
-    _loadAvailableRooms();
+    _loadAllRoomsAndAvailability();
   }
 
-  Future<void> _loadAvailableRooms() async {
+  /// =========================================================
+  /// ✅ 重点：加载“该房型所有房间” + 查询 bookings 得到 bookedRooms
+  /// =========================================================
+  Future<void> _loadAllRoomsAndAvailability() async {
     setState(() => _loading = true);
 
     try {
-      final list = await getAvailableRoomNosFromFirestore(
+      // 1) 先拿该房型所有房间（库存）
+      final all = await getAvailableRoomNosFromFirestore(
         roomTypeId: widget.roomTypeId,
         checkIn: widget.checkIn,
         checkOut: widget.checkOut,
       );
 
-      _availableRoomsAll = list.map(normalizeRoomNo).toList();
+      // 你的工具函数名字叫 getAvailableRoomNosFromFirestore，
+      // 但很多同学其实用它当“该房型所有房间列表”。
+      // 我这里统一当“库存列表”，后面会减去 bookedRooms 得到真正可用。
+      _allRoomsAll = all.map(normalizeRoomNo).toList();
 
+      // 2) 计算 activeDates（按天）
+      final activeDates = _buildActiveDates(widget.checkIn, widget.checkOut);
+
+      // 3) 查全局 bookings：把这些天里已占用的房间抓出来
+      await _loadBookedRoomsFromGlobalBookings(
+        activeDates: activeDates,
+      );
+
+      // 4) 计算真正可用房：all - booked（按楼层）
+      _recomputeAvailability();
+
+      // 5) 设置当前楼层
       final floors = _computeFloorIds();
-
       final wanted = _normalizeFloorId(widget.floorId);
+
       if (floors.contains(wanted)) {
         _currentFloorId = wanted;
       } else if (floors.isNotEmpty) {
         _currentFloorId = floors.first;
       }
 
+      // 6) 如果已选房已变不可用，清掉
       if (_selectedRoom != null && !_availableRoomsAll.contains(_selectedRoom)) {
         _selectedRoom = null;
       }
@@ -91,18 +149,72 @@ class _RoomMapPageState extends State<RoomMapPage> {
     if (mounted) setState(() => _loading = false);
   }
 
-  /// 从房号提取楼层（只取开头数字，比如 0801 -> 08F，1208 -> 12F）
-  String? _floorIdFromRoomNo(String roomNo) {
-    final rn = normalizeRoomNo(roomNo);
-    final m = RegExp(r'^(\d{2})').firstMatch(rn);
-    if (m == null) return null;
-    return '${m.group(1)}F';
+  /// =========================================================
+  /// ✅ 从全局 bookings 集合里查 booked 房间
+  /// - 用 activeDates array-contains-any（一次最多 10 个）
+  /// - 所以要分批查询，再合并
+  /// =========================================================
+  Future<void> _loadBookedRoomsFromGlobalBookings({
+    required List<String> activeDates,
+  }) async {
+    _bookedRoomsByFloor.clear();
+
+    // 没有天数就不查
+    if (activeDates.isEmpty) return;
+
+    final firestore = FirebaseFirestore.instance;
+    final bookingsRef = firestore.collection('bookings');
+
+    // Firestore 限制：array-contains-any 最多 10 个
+    final chunks = <List<String>>[];
+    for (int i = 0; i < activeDates.length; i += 10) {
+      chunks.add(activeDates.sublist(
+        i,
+        (i + 10 > activeDates.length) ? activeDates.length : i + 10,
+      ));
+    }
+
+    // 逐批查
+    for (final chunk in chunks) {
+      final snap = await bookingsRef
+          .where('roomTypeId', isEqualTo: widget.roomTypeId) // 只查该房型
+          .where('activeDates', arrayContainsAny: chunk)
+          .where('status', whereIn: ['confirmed', 'paid']) // 只算已确认/已支付
+          .get();
+
+      for (final doc in snap.docs) {
+        final data = doc.data();
+
+        final floorId = _normalizeFloorId((data['floorId'] ?? '').toString());
+        final roomNo = normalizeRoomNo((data['roomNo'] ?? '').toString());
+
+        if (floorId.isEmpty || roomNo.isEmpty) continue;
+
+        _bookedRoomsByFloor.putIfAbsent(floorId, () => <String>{});
+        _bookedRoomsByFloor[floorId]!.add(roomNo);
+      }
+    }
   }
 
+  /// ✅ 重新计算可用房：allRooms - bookedRooms（跨楼层）
+  void _recomputeAvailability() {
+    final bookedAll = <String>{};
+
+    for (final entry in _bookedRoomsByFloor.entries) {
+      bookedAll.addAll(entry.value);
+    }
+
+    _availableRoomsAll = _allRoomsAll
+        .where((r) => !bookedAll.contains(normalizeRoomNo(r)))
+        .map(normalizeRoomNo)
+        .toList();
+  }
+
+  /// ✅ 计算有哪些楼层（用 allRoomsAll，这样“整层满房”也还会显示出来）
   List<String> _computeFloorIds() {
     final set = <String>{};
 
-    for (final room in _availableRoomsAll) {
+    for (final room in _allRoomsAll) {
       final floorId = _floorIdFromRoomNo(room);
       if (floorId != null) set.add(floorId);
     }
@@ -117,10 +229,27 @@ class _RoomMapPageState extends State<RoomMapPage> {
     return list;
   }
 
-  List<String> _roomsForFloor(String floorId) {
+  /// ✅ 某一层“库存房”
+  List<String> _allRoomsForFloor(String floorId) {
     final fid = _normalizeFloorId(floorId);
     final prefix = fid.replaceAll('F', ''); // 08 / 12
-    final rooms = _availableRoomsAll.where((r) => r.startsWith(prefix)).toList()..sort();
+    final rooms = _allRoomsAll
+        .where((r) => normalizeRoomNo(r).startsWith(prefix))
+        .map(normalizeRoomNo)
+        .toList()
+      ..sort();
+    return rooms;
+  }
+
+  /// ✅ 某一层“真正可选房”
+  List<String> _availableRoomsForFloor(String floorId) {
+    final fid = _normalizeFloorId(floorId);
+    final prefix = fid.replaceAll('F', ''); // 08 / 12
+    final rooms = _availableRoomsAll
+        .where((r) => normalizeRoomNo(r).startsWith(prefix))
+        .map(normalizeRoomNo)
+        .toList()
+      ..sort();
     return rooms;
   }
 
@@ -130,8 +259,8 @@ class _RoomMapPageState extends State<RoomMapPage> {
     setState(() {
       _currentFloorId = fid;
 
-      final floorRooms = _roomsForFloor(fid);
-      if (_selectedRoom != null && !floorRooms.contains(_selectedRoom)) {
+      final floorAvail = _availableRoomsForFloor(fid);
+      if (_selectedRoom != null && !floorAvail.contains(_selectedRoom)) {
         _selectedRoom = null;
       }
     });
@@ -144,13 +273,28 @@ class _RoomMapPageState extends State<RoomMapPage> {
       );
       return;
     }
+
+    // ✅ 二次保险：确认时再判断一次（避免你停留在页面很久，期间被别人订走）
+    final floorAvail = _availableRoomsForFloor(_currentFloorId);
+    if (!floorAvail.contains(_selectedRoom)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('This room has just been booked. Please choose another.'),
+        ),
+      );
+      _loadAllRoomsAndAvailability();
+      return;
+    }
+
     Navigator.pop(context, _selectedRoom);
   }
 
   @override
   Widget build(BuildContext context) {
     final floorIds = _computeFloorIds();
-    final floorRooms = _roomsForFloor(_currentFloorId);
+
+    // ✅ 关键：RoomMapSelector 的 availableRooms 必须传“真正可选房”
+    final floorAvail = _availableRoomsForFloor(_currentFloorId);
 
     return Scaffold(
       appBar: AppBar(
@@ -162,7 +306,7 @@ class _RoomMapPageState extends State<RoomMapPage> {
         foregroundColor: Colors.black,
         actions: [
           IconButton(
-            onPressed: _loadAvailableRooms,
+            onPressed: _loadAllRoomsAndAvailability,
             icon: const Icon(Icons.refresh),
             tooltip: 'Refresh availability',
           ),
@@ -219,10 +363,14 @@ class _RoomMapPageState extends State<RoomMapPage> {
                                   SingleChildScrollView(
                                     scrollDirection: Axis.horizontal,
                                     child: Row(
-                                      children: (floorIds.isEmpty ? [_currentFloorId] : floorIds)
+                                      children: (floorIds.isEmpty
+                                              ? [_currentFloorId]
+                                              : floorIds)
                                           .map((fid) {
                                         return Padding(
-                                          padding: const EdgeInsets.symmetric(horizontal: 4),
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 4,
+                                          ),
                                           child: ChoiceChip(
                                             label: Text(fid),
                                             selected: _currentFloorId == fid,
@@ -236,11 +384,23 @@ class _RoomMapPageState extends State<RoomMapPage> {
 
                                   RoomMapSelector(
                                     floorId: _currentFloorId,
-                                    availableRooms: floorRooms,
+                                    availableRooms: floorAvail, // ✅ 只传真正可选
                                     selectedRoom: _selectedRoom,
                                     onSelected: (roomNo) {
                                       setState(() => _selectedRoom = roomNo);
                                     },
+                                  ),
+
+                                  // （可选）给你显示一下 booked 数量，方便你调试
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 8),
+                                    child: Text(
+                                      'Booked on ${_currentFloorId}: ${(_bookedRoomsByFloor[_currentFloorId] ?? {}).length}',
+                                      style: const TextStyle(
+                                        fontSize: 12,
+                                        color: Colors.black45,
+                                      ),
+                                    ),
                                   ),
                                 ],
                               ),
