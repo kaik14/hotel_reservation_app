@@ -1,10 +1,15 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:hotel_reservation_app/pages/booking_success_page.dart';
 import 'package:panorama_viewer/panorama_viewer.dart';
 
 class TaxiBookingPage extends StatefulWidget {
-  const TaxiBookingPage({super.key});
+  /// ✅ Edit 模式支持（保留历史选项 + 保存更改，无支付）
+  final String? existingBookingId;
+  final Map<String, dynamic>? existingData;
+
+  const TaxiBookingPage({super.key, this.existingBookingId, this.existingData});
 
   @override
   State<TaxiBookingPage> createState() => _TaxiBookingPageState();
@@ -14,22 +19,24 @@ class _TaxiBookingPageState extends State<TaxiBookingPage> {
   DateTime? _selectedDate;
   TimeOfDay? _selectedTime;
 
-  // 行程类型：airportPickup / airportDropoff
+  // airportPickup / airportDropoff
   String? _selectedRideKey;
 
-  // 乘客人数
   int _passengers = 1;
 
-  // 360° 控制
   bool _showPanorama = false;
 
-  // 加载 Firebase 中的 taxi 文档
+  bool _isSubmitting = false;
+
+  bool get _isEditMode =>
+      widget.existingBookingId != null && widget.existingBookingId!.isNotEmpty;
+
+  // -------------------- Firestore --------------------
   Future<DocumentSnapshot<Map<String, dynamic>>> _loadService() {
     return FirebaseFirestore.instance.collection('services').doc('taxi').get();
   }
 
-  // ---------- 工具函数 ----------
-
+  // -------------------- helpers --------------------
   TimeOfDay _parseTimeOfDay(String hhmm) {
     final parts = hhmm.split(':');
     final h = int.tryParse(parts[0]) ?? 0;
@@ -70,9 +77,67 @@ class _TaxiBookingPageState extends State<TaxiBookingPage> {
     return months[month - 1];
   }
 
-  // ---------- 交互逻辑 ----------
+  String _fmtHHmm(TimeOfDay t) =>
+      '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
 
-  // 日期：今天 ~ 今天 + maxAdvanceDays（例如 3）
+  DateTime? _serviceStartAt() {
+    if (_selectedDate == null || _selectedTime == null) return null;
+    return DateTime(
+      _selectedDate!.year,
+      _selectedDate!.month,
+      _selectedDate!.day,
+      _selectedTime!.hour,
+      _selectedTime!.minute,
+    );
+  }
+
+  // -------------------- init (Edit 回填) --------------------
+  @override
+  void initState() {
+    super.initState();
+
+    if (_isEditMode && widget.existingData != null) {
+      final d = widget.existingData!;
+
+      // ride type
+      _selectedRideKey =
+          (d['rideKey'] ?? d['rideType'] ?? d['rideTypeKey'] ?? d['ride'] ?? '')
+              .toString()
+              .trim();
+      if (_selectedRideKey != null && _selectedRideKey!.isEmpty) {
+        _selectedRideKey = null;
+      }
+
+      // passengers
+      final p = d['passengers'] ?? d['totalGuests'] ?? d['guests'];
+      if (p is int) _passengers = p;
+      if (p is String) _passengers = int.tryParse(p) ?? _passengers;
+
+      // time
+      DateTime? startAt;
+      final ts = d['serviceStart'] as Timestamp?;
+      if (ts != null) {
+        startAt = ts.toDate();
+      } else {
+        final dateTs = d['serviceDate'] as Timestamp?;
+        final timeStr = (d['serviceTime'] as String?);
+        if (dateTs != null && timeStr != null && timeStr.contains(':')) {
+          final date = dateTs.toDate();
+          final parts = timeStr.split(':');
+          final h = int.tryParse(parts[0]) ?? 0;
+          final m = int.tryParse(parts[1]) ?? 0;
+          startAt = DateTime(date.year, date.month, date.day, h, m);
+        }
+      }
+
+      if (startAt != null) {
+        _selectedDate = DateTime(startAt.year, startAt.month, startAt.day);
+        _selectedTime = TimeOfDay(hour: startAt.hour, minute: startAt.minute);
+      }
+    }
+  }
+
+  // -------------------- pickers --------------------
   Future<void> _pickDate(BuildContext context, int maxAdvanceDays) async {
     final today = DateTime.now();
     final DateTime? picked = await showDatePicker(
@@ -90,7 +155,6 @@ class _TaxiBookingPageState extends State<TaxiBookingPage> {
     });
   }
 
-  // 时间：在营业时间内 & 如果是今天，不能选过去时间
   Future<void> _pickTime(
     BuildContext context,
     TimeOfDay open,
@@ -112,7 +176,6 @@ class _TaxiBookingPageState extends State<TaxiBookingPage> {
 
     if (picked == null) return;
 
-    // 营业时间检查（这里是 00:00–23:59，但保留逻辑）
     if (!_isTimeInRange(picked, open, close)) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -124,7 +187,6 @@ class _TaxiBookingPageState extends State<TaxiBookingPage> {
       return;
     }
 
-    // 如果预约日期是今天，不能早于当前时间
     final now = DateTime.now();
     final selectedDay = DateTime(
       _selectedDate!.year,
@@ -148,16 +210,151 @@ class _TaxiBookingPageState extends State<TaxiBookingPage> {
     });
   }
 
-  // 提交按钮是否可用
+  // -------------------- submit enabled --------------------
   bool get canSubmit {
     if (_selectedDate == null || _selectedTime == null) return false;
     if (_selectedRideKey == null) return false;
     if (_passengers <= 0) return false;
-    return true;
+    return !_isSubmitting;
   }
 
-  // ---------- UI ----------
+  // -------------------- create/update booking (free service) --------------------
+  Future<void> _createTaxiBooking({
+    required String serviceName,
+    required String location,
+    required String rideLabel,
+    required int minPassengers,
+    required int maxPassengers,
+  }) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Not logged in.')));
+      return;
+    }
 
+    final startAt = _serviceStartAt();
+    if (startAt == null) return;
+
+    final passengers = _passengers.clamp(minPassengers, maxPassengers);
+
+    setState(() => _isSubmitting = true);
+
+    try {
+      final docRef = FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('bookings')
+          .doc();
+
+      await docRef.set({
+        'createdAt': Timestamp.now(),
+        'updatedAt': Timestamp.now(),
+
+        'bookingType': 'service',
+        'serviceType': 'taxi',
+        'serviceName': serviceName,
+        'serviceImagePath': 'assets/services/taxi.jpg',
+        'location': location,
+
+        'serviceDate': Timestamp.fromDate(
+          DateTime(startAt.year, startAt.month, startAt.day),
+        ),
+        'serviceStart': Timestamp.fromDate(startAt),
+        'serviceTime': _fmtHHmm(_selectedTime!),
+
+        // taxi specific
+        'rideKey': _selectedRideKey,
+        'rideLabel': rideLabel,
+        'passengers': passengers,
+
+        // free service
+        'currency': 'MYR',
+        'totalPriceRM': 0,
+      });
+
+      if (!mounted) return;
+      Navigator.of(
+        context,
+      ).push(MaterialPageRoute(builder: (_) => const BookingSuccessPage()));
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Booking failed: $e')));
+      }
+    } finally {
+      if (mounted) setState(() => _isSubmitting = false);
+    }
+  }
+
+  Future<void> _updateTaxiBooking({
+    required String serviceName,
+    required String location,
+    required String rideLabel,
+    required int minPassengers,
+    required int maxPassengers,
+  }) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Not logged in.')));
+      return;
+    }
+
+    final startAt = _serviceStartAt();
+    if (startAt == null) return;
+
+    final passengers = _passengers.clamp(minPassengers, maxPassengers);
+
+    setState(() => _isSubmitting = true);
+
+    try {
+      final docRef = FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('bookings')
+          .doc(widget.existingBookingId);
+
+      await docRef.update({
+        'updatedAt': Timestamp.now(),
+
+        'bookingType': 'service',
+        'serviceType': 'taxi',
+        'serviceName': serviceName,
+        'serviceImagePath': 'assets/services/taxi.jpg',
+        'location': location,
+
+        'serviceDate': Timestamp.fromDate(
+          DateTime(startAt.year, startAt.month, startAt.day),
+        ),
+        'serviceStart': Timestamp.fromDate(startAt),
+        'serviceTime': _fmtHHmm(_selectedTime!),
+
+        'rideKey': _selectedRideKey,
+        'rideLabel': rideLabel,
+        'passengers': passengers,
+
+        'currency': 'MYR',
+        'totalPriceRM': 0,
+      });
+
+      if (!mounted) return;
+      Navigator.of(context).pop(true);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Update failed: $e')));
+      }
+    } finally {
+      if (mounted) setState(() => _isSubmitting = false);
+    }
+  }
+
+  // -------------------- UI --------------------
   @override
   Widget build(BuildContext context) {
     return Theme(
@@ -191,7 +388,7 @@ class _TaxiBookingPageState extends State<TaxiBookingPage> {
       child: Scaffold(
         backgroundColor: _LightPalette.bg,
         appBar: AppBar(
-          title: const Text('Taxi Booking'),
+          title: Text(_isEditMode ? 'Edit Taxi Booking' : 'Taxi Booking'),
           bottom: PreferredSize(
             preferredSize: const Size.fromHeight(0.5),
             child: Container(
@@ -215,27 +412,32 @@ class _TaxiBookingPageState extends State<TaxiBookingPage> {
 
             final data = snapshot.data!.data()!;
 
-            // 基本信息
             final name = data['name'] as String? ?? 'Airport Taxi';
             final description =
                 data['description'] as String? ??
                 'Free airport pickup and drop-off taxi service.';
-            final isFree = data['isFree'] as bool? ?? false;
+            final isFree = data['isFree'] as bool? ?? true;
 
-            // 营业时间（这里基本是 24 小时）
             final schedule = (data['schedule'] ?? {}) as Map<String, dynamic>;
             final openStr = schedule['open'] as String? ?? '00:00';
             final closeStr = schedule['close'] as String? ?? '23:59';
             final openTime = _parseTimeOfDay(openStr);
             final closeTime = _parseTimeOfDay(closeStr);
 
-            // 最多提前几天（一般是 3）
             final maxAdvanceDays = data['maxAdvanceDays'] as int? ?? 3;
 
-            // rideTypes: airportPickup / airportDropoff
             final rideTypes = (data['rideTypes'] ?? {}) as Map<String, dynamic>;
 
-            if (_selectedRideKey == null && rideTypes.isNotEmpty) {
+            // ✅ 如果不是编辑模式 + 没选过 ride，默认选第一个
+            if (!_isEditMode &&
+                _selectedRideKey == null &&
+                rideTypes.isNotEmpty) {
+              _selectedRideKey = rideTypes.keys.first;
+            }
+            // ✅ 如果是编辑模式，但 rideKey 不存在于 rideTypes，则兜底选第一个
+            if (_selectedRideKey != null &&
+                rideTypes.isNotEmpty &&
+                !rideTypes.containsKey(_selectedRideKey)) {
               _selectedRideKey = rideTypes.keys.first;
             }
 
@@ -254,13 +456,11 @@ class _TaxiBookingPageState extends State<TaxiBookingPage> {
             final minPassengers = selectedRide?['passengersMin'] as int? ?? 1;
             final maxPassengers = selectedRide?['passengersMax'] as int? ?? 4;
 
-            // 保证人数在合法范围内（只影响 UI，不在 build 里 setState）
             final shownPassengers = _passengers.clamp(
               minPassengers,
               maxPassengers,
             );
 
-            // UI 信息
             final ui = (data['ui'] ?? {}) as Map<String, dynamic>;
             final location =
                 ui['location'] as String? ?? 'Hotel Main Lobby Pick-up Point';
@@ -269,11 +469,11 @@ class _TaxiBookingPageState extends State<TaxiBookingPage> {
                 'Please wait at the main lobby pick-up point.';
 
             return SingleChildScrollView(
-              padding: const EdgeInsets.only(bottom: 80),
+              padding: const EdgeInsets.only(bottom: 90),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // 顶部大图 + 360°
+                  // header image + 360
                   Padding(
                     padding: const EdgeInsets.all(16),
                     child: ClipRRect(
@@ -308,11 +508,9 @@ class _TaxiBookingPageState extends State<TaxiBookingPage> {
                                   borderRadius: BorderRadius.circular(20),
                                 ),
                               ),
-                              onPressed: () {
-                                setState(() {
-                                  _showPanorama = !_showPanorama;
-                                });
-                              },
+                              onPressed: () => setState(() {
+                                _showPanorama = !_showPanorama;
+                              }),
                               icon: const Icon(Icons.threesixty),
                               label: Text(
                                 _showPanorama ? 'Exit 360°' : '360° View',
@@ -324,7 +522,7 @@ class _TaxiBookingPageState extends State<TaxiBookingPage> {
                     ),
                   ),
 
-                  // 标题 + Free 标签
+                  // title + free
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     child: Row(
@@ -380,7 +578,7 @@ class _TaxiBookingPageState extends State<TaxiBookingPage> {
                   ),
                   const SizedBox(height: 16),
 
-                  // Booking Details
+                  // Booking details
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     child: Text(
@@ -403,7 +601,7 @@ class _TaxiBookingPageState extends State<TaxiBookingPage> {
                         padding: const EdgeInsets.all(16),
                         child: Column(
                           children: [
-                            // Ride type 下拉
+                            // ride type dropdown
                             Row(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
@@ -443,6 +641,12 @@ class _TaxiBookingPageState extends State<TaxiBookingPage> {
                                         onChanged: (val) {
                                           setState(() {
                                             _selectedRideKey = val;
+                                            // ride 切换时，如果人数超范围，拉回范围
+                                            final clamped = _passengers.clamp(
+                                              minPassengers,
+                                              maxPassengers,
+                                            );
+                                            _passengers = clamped;
                                           });
                                         },
                                       ),
@@ -467,7 +671,7 @@ class _TaxiBookingPageState extends State<TaxiBookingPage> {
                             ),
                             const Divider(height: 24),
 
-                            // 日期
+                            // date
                             _bookingRow(
                               context: context,
                               icon: Icons.calendar_today_outlined,
@@ -477,7 +681,7 @@ class _TaxiBookingPageState extends State<TaxiBookingPage> {
                             ),
                             const Divider(height: 24),
 
-                            // 时间
+                            // time
                             _bookingRow(
                               context: context,
                               icon: Icons.access_time,
@@ -490,7 +694,7 @@ class _TaxiBookingPageState extends State<TaxiBookingPage> {
                             ),
                             const Divider(height: 24),
 
-                            // 乘客人数
+                            // passengers
                             Row(
                               children: [
                                 const Icon(Icons.people_outline),
@@ -505,22 +709,14 @@ class _TaxiBookingPageState extends State<TaxiBookingPage> {
                                 ),
                                 IconButton(
                                   onPressed: shownPassengers > minPassengers
-                                      ? () {
-                                          setState(() {
-                                            _passengers--;
-                                          });
-                                        }
+                                      ? () => setState(() => _passengers--)
                                       : null,
                                   icon: const Icon(Icons.remove_circle_outline),
                                 ),
                                 Text('$shownPassengers'),
                                 IconButton(
                                   onPressed: shownPassengers < maxPassengers
-                                      ? () {
-                                          setState(() {
-                                            _passengers++;
-                                          });
-                                        }
+                                      ? () => setState(() => _passengers++)
                                       : null,
                                   icon: const Icon(Icons.add_circle_outline),
                                 ),
@@ -534,7 +730,7 @@ class _TaxiBookingPageState extends State<TaxiBookingPage> {
 
                   const SizedBox(height: 16),
 
-                  // 规则 & Notes
+                  // rules
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     child: Text(
@@ -559,7 +755,7 @@ class _TaxiBookingPageState extends State<TaxiBookingPage> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             _bullet(
-                              'Bookings are available within ${maxAdvanceDays.toString()} days from today (today and the next days).',
+                              'Bookings are available within $maxAdvanceDays days from today.',
                             ),
                             _bullet(
                               'For rides scheduled today, the pickup time must be later than the current time.',
@@ -579,6 +775,7 @@ class _TaxiBookingPageState extends State<TaxiBookingPage> {
             );
           },
         ),
+
         bottomNavigationBar: SafeArea(
           top: false,
           child: Padding(
@@ -598,19 +795,72 @@ class _TaxiBookingPageState extends State<TaxiBookingPage> {
                   ),
                 ),
                 onPressed: canSubmit
-                    ? () {
-                        // 现在只是跳到成功页面，将来可以在这里写入 Firestore
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => const BookingSuccessPage(),
-                          ),
-                        );
+                    ? () async {
+                        final snap = await _loadService();
+                        if (!snap.exists) return;
+                        final serviceData = snap.data() ?? {};
+
+                        final serviceName =
+                            (serviceData['name'] as String?) ?? 'Airport Taxi';
+                        final ui =
+                            (serviceData['ui'] ?? {}) as Map<String, dynamic>;
+                        final location =
+                            (ui['location'] as String?) ??
+                            'Hotel Main Lobby Pick-up Point';
+
+                        final rideTypes =
+                            (serviceData['rideTypes'] ?? {})
+                                as Map<String, dynamic>;
+
+                        Map<String, dynamic>? selectedRide;
+                        if (_selectedRideKey != null &&
+                            rideTypes[_selectedRideKey]
+                                is Map<String, dynamic>) {
+                          selectedRide =
+                              rideTypes[_selectedRideKey]
+                                  as Map<String, dynamic>;
+                        }
+                        final rideLabel =
+                            selectedRide?['label'] as String? ??
+                            _selectedRideKey ??
+                            'Ride';
+                        final minPassengers =
+                            selectedRide?['passengersMin'] as int? ?? 1;
+                        final maxPassengers =
+                            selectedRide?['passengersMax'] as int? ?? 4;
+
+                        if (_isEditMode) {
+                          await _updateTaxiBooking(
+                            serviceName: serviceName,
+                            location: location,
+                            rideLabel: rideLabel,
+                            minPassengers: minPassengers,
+                            maxPassengers: maxPassengers,
+                          );
+                        } else {
+                          await _createTaxiBooking(
+                            serviceName: serviceName,
+                            location: location,
+                            rideLabel: rideLabel,
+                            minPassengers: minPassengers,
+                            maxPassengers: maxPassengers,
+                          );
+                        }
                       }
                     : null,
-                child: const Text(
-                  'Confirm Booking',
-                  style: TextStyle(fontWeight: FontWeight.w600),
-                ),
+                child: _isSubmitting
+                    ? const SizedBox(
+                        height: 20,
+                        width: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : Text(
+                        _isEditMode ? 'Save Changes' : 'Confirm Booking',
+                        style: const TextStyle(fontWeight: FontWeight.w600),
+                      ),
               ),
             ),
           ),
@@ -621,7 +871,6 @@ class _TaxiBookingPageState extends State<TaxiBookingPage> {
 }
 
 // ---------- 共用小组件 ----------
-
 Widget _bookingRow({
   required BuildContext context,
   required IconData icon,
@@ -664,7 +913,6 @@ Widget _bullet(String text) {
   );
 }
 
-/// 和 ServicePage 一致的浅色调色板
 class _LightPalette {
   static const bg = Color.fromARGB(255, 222, 228, 236);
   static const textPrimary = Color(0xFF0F1722);
